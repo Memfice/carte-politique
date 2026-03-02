@@ -15,6 +15,7 @@ import os
 # URLs
 POLICE_MUN_URL = "https://www.data.gouv.fr/api/1/datasets/r/081e94fe-b257-4ae7-bc31-bf1f2eb6c968"
 VIDEOSURV_URL = "https://www.data.gouv.fr/api/1/datasets/r/b56c1eda-6b75-468a-b33f-147d37224c9e"
+POPULATION_URL = "https://www.data.gouv.fr/api/1/datasets/r/be303501-5c46-48a1-87b4-3d198423ff49"
 
 
 def normalize(name):
@@ -118,6 +119,43 @@ def parse_videosurveillance(csv_text, lookup):
     return result
 
 
+def parse_population(xlsx_path):
+    """Parse INSEE population XLSX. Returns dict {insee_code: population}."""
+    import pandas as pd
+
+    df = pd.read_excel(xlsx_path, engine="openpyxl")
+    result = {}
+
+    # The file has columns including codgeo (INSEE code) and population columns
+    import re
+    pop_cols = [c for c in df.columns if str(c).startswith("pop_municipale") or str(c).startswith("pmun") or re.match(r"^p\d+_pop$", str(c))]
+    if not pop_cols:
+        for col in df.columns:
+            print(f"  Column: {col}", file=sys.stderr)
+        raise ValueError("Cannot find population column. See column names above.")
+
+    pop_col = pop_cols[-1]  # Most recent
+    code_col = None
+    for candidate in ["codgeo", "CODGEO", "code_commune", "COM"]:
+        if candidate in df.columns:
+            code_col = candidate
+            break
+
+    if code_col is None:
+        for col in df.columns:
+            print(f"  Column: {col}", file=sys.stderr)
+        raise ValueError("Cannot find code commune column. See column names above.")
+
+    for _, row in df.iterrows():
+        code = str(row[code_col]).strip()
+        pop = safe_int(row[pop_col])
+        if code and pop > 0:
+            result[code] = pop
+
+    print(f"Population: {len(result)} communes loaded", file=sys.stderr)
+    return result
+
+
 def safe_int(val):
     try:
         import math
@@ -157,6 +195,12 @@ def main():
         csv_text = resp.read().decode("utf-8")
     vs_codes = parse_videosurveillance(csv_text, lookup)
 
+    print("Downloading population INSEE XLSX...", file=sys.stderr)
+    tmp_pop = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+    urllib.request.urlretrieve(POPULATION_URL, tmp_pop.name)
+    population = parse_population(tmp_pop.name)
+    os.unlink(tmp_pop.name)
+
     result = {}
     all_codes = set(police_data.keys()) | vs_codes
 
@@ -167,6 +211,11 @@ def main():
             entry["asvp"] = police_data[code]["asvp"]
         if code in vs_codes:
             entry["vs"] = 1
+        if code in population:
+            entry["pop"] = population[code]
+            agents = (entry.get("pm", 0) + entry.get("asvp", 0))
+            if agents > 0 and population[code] > 0:
+                entry["r"] = round(agents / population[code] * 10000, 1)
         result[code] = entry
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -176,6 +225,10 @@ def main():
     print(f"\nOutput: {output_path} ({size_kb:.0f} KB)", file=sys.stderr)
     print(f"  {len(police_data)} communes with police municipale data", file=sys.stderr)
     print(f"  {len(vs_codes)} communes with videosurveillance", file=sys.stderr)
+    pop_count = sum(1 for v in result.values() if "pop" in v)
+    ratio_count = sum(1 for v in result.values() if "r" in v)
+    print(f"  {pop_count} communes with population data", file=sys.stderr)
+    print(f"  {ratio_count} communes with agent/population ratio", file=sys.stderr)
     print(f"  {len(result)} communes total in output", file=sys.stderr)
 
 
