@@ -452,12 +452,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 
   // --- Prospection scoring engine ---
   var PROSP_SIGNALS = [
-    { key: 'stat_payant',  label: 'Stationnement payant',     weight: 25, year: '2018' },
-    { key: 'no_videoverb', label: 'Sans videoverbalisation',  weight: 25, year: '2025' },
-    { key: 'pm_count',     label: 'Effectif police mun.',     weight: 15, year: '2024' },
-    { key: 'pm_growth',    label: 'Croissance PM',            weight: 10, year: '2019-2024' },
-    { key: 'has_vs',       label: 'Videoprotection',          weight: 5,  year: '2012' },
-    { key: 'pop_sweet',    label: 'Taille commune',           weight: 20, year: '2021' }
+    { key: 'stat_payant',  label: 'Stationnement payant',     weight: 25, year: '2018',
+      desc: 'Commune avec stationnement payant = besoin de verbalisation' },
+    { key: 'no_videoverb', label: 'Sans videoverbalisation',  weight: 25, year: '2025',
+      desc: 'Pas encore equipee = marche ouvert' },
+    { key: 'pm_count',     label: 'Effectif police mun.',     weight: 15, year: '2024',
+      desc: 'Plus d\'agents = plus de moyens, rapporte a la population' },
+    { key: 'pm_growth',    label: 'Croissance PM',            weight: 10, year: '2019-2024',
+      desc: 'Effectifs en hausse = investissement securite en cours' },
+    { key: 'has_vs',       label: 'Videoprotection',          weight: 5,  year: '2012',
+      desc: 'Deja equipee en cameras = culture video existante' },
+    { key: 'pop_sweet',    label: 'Taille commune',           weight: 20, year: '2021',
+      desc: 'Communes 5k-100k habitants = cible ideale' }
   ];
 
   var prospWeights = {};
@@ -465,20 +471,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 
   var prospFilters = { statPayantOnly: false, noVideoverb: false, hasVs: false, popMin: 0, popMax: 500000 };
 
-  function computeProspScore(code) {
+  function computeProspScore(code, returnDetail) {
     var p = prosp[code];
-    if (!p) return null;
+    if (!p) return returnDetail ? null : null;
     var pop = p.pop || 0;
 
     var signals = {};
-    // Stationnement payant (binary)
     signals.stat_payant = p.stat_payant ? 1 : 0;
-    // No videoverbalisation (inverted — higher if NOT equipped)
     signals.no_videoverb = p.videoverb ? 0 : 1;
-    // PM count normalized per capita (cap at 50/10k)
     var pmCount = (p.pm || 0) + (p.asvp || 0);
     signals.pm_count = pop > 0 ? Math.min(pmCount / pop * 10000 / 50, 1) : 0;
-    // PM growth (% change over trend, capped 0-1)
     if (p.pm_trend && p.pm_trend.length >= 2) {
       var first = p.pm_trend[0];
       var last = p.pm_trend[p.pm_trend.length - 1];
@@ -490,9 +492,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     } else {
       signals.pm_growth = 0;
     }
-    // Has videoprotection (binary)
     signals.has_vs = p.vs ? 1 : 0;
-    // Population sweet spot (Gaussian around 5k-100k, center 30k)
     if (pop > 0) {
       var logPop = Math.log(pop);
       var logCenter = Math.log(30000);
@@ -502,7 +502,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       signals.pop_sweet = 0;
     }
 
-    // Weighted sum
     var totalWeight = 0;
     var weightedSum = 0;
     for (var key in signals) {
@@ -510,8 +509,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       totalWeight += w;
       weightedSum += signals[key] * w;
     }
-    if (totalWeight === 0) return null;
-    return Math.round(weightedSum / totalWeight * 100);
+    if (totalWeight === 0) return returnDetail ? null : null;
+    var score = Math.round(weightedSum / totalWeight * 100);
+
+    if (returnDetail) {
+      var detail = [];
+      PROSP_SIGNALS.forEach(function(sig) {
+        var w = prospWeights[sig.key] || 0;
+        var raw = signals[sig.key] || 0;
+        var contrib = totalWeight > 0 ? Math.round(raw * w / totalWeight * 100) : 0;
+        detail.push({ key: sig.key, label: sig.label, raw: raw, weight: w, contrib: contrib });
+      });
+      return { score: score, detail: detail };
+    }
+    return score;
   }
 
   function passesProspFilters(code) {
@@ -590,10 +601,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       prospRow.style.display = 'block';
       prospRow.textContent = '';
 
-      var score = computeProspScore(code);
+      var result = computeProspScore(code, true);
       var lines = [];
-      if (score !== null) {
-        lines.push(['Score', score + '/100', '']);
+      if (result !== null) {
+        lines.push(['Score', result.score + '/100', '']);
       } else {
         lines.push(['Score', 'N/A', '']);
       }
@@ -627,6 +638,44 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         }
         prospRow.appendChild(div);
       });
+
+      // Score decomposition
+      if (result && result.detail) {
+        var decompDiv = document.createElement('div');
+        decompDiv.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid #eee;font-size:10px;';
+        var decompTitle = document.createElement('div');
+        decompTitle.style.cssText = 'font-weight:700;color:#888;margin-bottom:3px;';
+        decompTitle.textContent = 'Decomposition du score :';
+        decompDiv.appendChild(decompTitle);
+
+        result.detail.forEach(function(d) {
+          if (d.weight === 0) return;
+          var row = document.createElement('div');
+          row.style.cssText = 'display:flex;align-items:center;gap:4px;margin:2px 0;';
+
+          var barBg = document.createElement('div');
+          barBg.style.cssText = 'width:40px;height:6px;background:#eee;border-radius:3px;overflow:hidden;flex-shrink:0;';
+          var barFill = document.createElement('div');
+          var pct = Math.round(d.raw * 100);
+          barFill.style.cssText = 'height:100%;border-radius:3px;background:' + (pct > 60 ? '#2ecc71' : pct > 30 ? '#f39c12' : '#e74c3c') + ';width:' + pct + '%;';
+          barBg.appendChild(barFill);
+
+          var labelEl = document.createElement('span');
+          labelEl.style.cssText = 'color:#666;flex:1;';
+          labelEl.textContent = d.label;
+
+          var contribEl = document.createElement('span');
+          contribEl.style.cssText = 'font-weight:600;color:#444;min-width:20px;text-align:right;';
+          contribEl.textContent = '+' + d.contrib;
+
+          row.appendChild(barBg);
+          row.appendChild(labelEl);
+          row.appendChild(contribEl);
+          decompDiv.appendChild(row);
+        });
+
+        prospRow.appendChild(decompDiv);
+      }
     } else {
       prospRow.style.display = 'none';
       if (s) {
@@ -703,7 +752,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     var subtitles = {
       politique: 'Nuance politique du maire \u2014 Municipales 2020',
       surveillance: 'Effectifs police municipale et videoprotection',
-      prospection: 'Potentiel videoverbalisation par commune'
+      prospection: 'Score de potentiel pour la videoverbalisation — donnees croisees police, stationnement et equipements'
     };
     document.querySelector('#title-bar p').textContent = subtitles[mode];
 
@@ -984,6 +1033,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 
     tableEl.textContent = '';
 
+    // Intro explanation
+    var introDiv = document.createElement('div');
+    introDiv.style.cssText = 'font-size:11px;color:#555;line-height:1.5;margin-bottom:12px;padding:8px 10px;background:rgba(46,204,113,0.08);border-radius:6px;border-left:3px solid #2ecc71;';
+    introDiv.textContent = 'Chaque commune recoit un score de 0 a 100 estimant son potentiel ' +
+      'pour la videoverbalisation. Le score combine 6 signaux issus de donnees publiques. ' +
+      'Ajustez les curseurs pour modifier l\'importance de chaque critere — la carte se met a jour en temps reel.';
+    tableEl.appendChild(introDiv);
+
     // Weight sliders section
     var slidersDiv = document.createElement('div');
     slidersDiv.style.cssText = 'margin-bottom:12px;';
@@ -993,8 +1050,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     slidersDiv.appendChild(slidersTitle);
 
     PROSP_SIGNALS.forEach(function(sig) {
+      var wrapper = document.createElement('div');
+      wrapper.style.cssText = 'margin:6px 0;';
+
       var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;margin:4px 0;font-size:11px;';
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;';
 
       var label = document.createElement('span');
       label.style.cssText = 'flex:1;min-width:0;';
@@ -1027,7 +1087,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       row.appendChild(label);
       row.appendChild(slider);
       row.appendChild(valSpan);
-      slidersDiv.appendChild(row);
+      wrapper.appendChild(row);
+
+      // Signal description
+      var descEl = document.createElement('div');
+      descEl.style.cssText = 'font-size:10px;color:#999;margin-top:1px;padding-left:2px;';
+      descEl.textContent = sig.desc;
+      wrapper.appendChild(descEl);
+
+      slidersDiv.appendChild(wrapper);
     });
     tableEl.appendChild(slidersDiv);
 
