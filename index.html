@@ -340,10 +340,6 @@ input[type="range"]::-moz-range-thumb {
     <span class="slider-value" id="ratio-value">0</span> /10k hab
   </label>
   <label>
-    <input type="checkbox" id="vs-only">
-    Videoprotection uniquement
-  </label>
-  <label>
     <input type="checkbox" id="data-only">
     Avec donnees uniquement
   </label>
@@ -374,13 +370,17 @@ input[type="range"]::-moz-range-thumb {
     </div>
 
     <div style="display:flex; align-items:center; margin:6px 0;">
-      <div style="width:16px; height:16px; border:3px solid rgba(255,255,255,0.7); border-radius:3px; background:#666; margin-right:8px; box-shadow:0 0 2px rgba(0,0,0,0.5);"></div>
-      <span class="legend-label">Videoprotection</span>
+      <div style="width:16px; height:16px; border:2px dashed #444; border-radius:3px; background:#2a2a3e; margin-right:8px;"></div>
+      <span class="legend-label">Pas de donnees</span>
+    </div>
+    <div style="display:flex; align-items:center; margin:6px 0;">
+      <div style="width:16px; height:16px; border:1px solid #333; border-radius:3px; background:#1a1a2e; margin-right:8px;"></div>
+      <span class="legend-label">Donnees = 0 agents</span>
     </div>
 
     <div style="margin-top:8px; font-size:10px; color:#777; line-height:1.4;">
-      Police mun. : donnees 2024<br>
-      Videoprotection : donnees 2012
+      Police mun. : donnees 2024 | Pop. INSEE 2021<br>
+      Ratio plafonne a 50/10k hab.
     </div>
   </div>
 </div>
@@ -395,7 +395,6 @@ input[type="range"]::-moz-range-thumb {
     <div><strong>ASVP :</strong> <span id="info-asvp"></span></div>
     <div><strong>Population :</strong> <span id="info-pop"></span></div>
     <div><strong>Ratio /10k :</strong> <span id="info-ratio"></span></div>
-    <div><strong>Videoprot. :</strong> <span id="info-vs"></span></div>
   </div>
   <div class="detail" id="info-prosp-row" style="display:none; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
   </div>
@@ -515,8 +514,7 @@ input[type="range"]::-moz-range-thumb {
     { threshold: 10, color: '#FEB24C' },
     { threshold: 20, color: '#FD8D3C' },
     { threshold: 30, color: '#FC4E2A' },
-    { threshold: 50, color: '#E31A1C' },
-    { threshold: 100, color: '#B10026' }
+    { threshold: 50, color: '#E31A1C' }
   ];
 
   function getThresholdColor(value, colorScale) {
@@ -527,7 +525,7 @@ input[type="range"]::-moz-range-thumb {
     return colorScale[0].color;
   }
 
-  var survFilters = { ratioMin: 0, vsOnly: false, dataOnly: false };
+  var survFilters = { ratioMin: 0, dataOnly: false };
 
   var allBtn = document.createElement('button');
   allBtn.className = 'filter-btn active';
@@ -558,7 +556,7 @@ input[type="range"]::-moz-range-thumb {
       return { fillColor: '#333', fillOpacity: 0.15, weight: 0.2, color: '#111', opacity: 0.3 };
     }
 
-    // Surveillance encoding
+    // Border encodes police municipale effectif
     var s = surv[code];
     var borderWeight = 0.3;
     var borderColor = '#111';
@@ -573,8 +571,8 @@ input[type="range"]::-moz-range-thumb {
       else if (effectif > 0) borderWeight = 1;
       else borderWeight = 0.5;
 
-      borderColor = s.vs ? '#ffffff' : '#888';
-      borderOpacity = s.vs ? 0.9 : 0.6;
+      borderColor = '#888';
+      borderOpacity = 0.6;
     }
 
     return {
@@ -594,62 +592,58 @@ input[type="range"]::-moz-range-thumb {
 
     if (!s) {
       if (survFilters.dataOnly) return { fillOpacity: 0, weight: 0, opacity: 0 };
-      return { fillColor: '#444', fillOpacity: 0.15, weight: 0.2, color: '#222', opacity: 0.3 };
+      // No data: diagonal hatch pattern via low opacity + dashed border
+      return { fillColor: '#2a2a3e', fillOpacity: 0.25, weight: 0.4, color: '#444', opacity: 0.5, dashArray: '2 4' };
     }
 
     var ratio = s.r || 0;
-    var hasVS = !!s.vs;
 
-    if (survFilters.vsOnly && !hasVS)
-      return { fillColor: '#444', fillOpacity: 0.15, weight: 0.2, color: '#222', opacity: 0.3 };
     if (ratio < survFilters.ratioMin)
       return { fillColor: '#444', fillOpacity: 0.15, weight: 0.2, color: '#222', opacity: 0.3 };
     if (activeFilter && m && m.f !== activeFilter)
       return { fillColor: '#333', fillOpacity: 0.15, weight: 0.2, color: '#111', opacity: 0.3 };
 
+    // Data present but zero agents: distinct from heatmap
+    if (ratio === 0) {
+      return { fillColor: '#1a1a2e', fillOpacity: 0.5, weight: 0.3, color: '#333', opacity: 0.4 };
+    }
+
     return {
       fillColor: getThresholdColor(ratio, SURV_COLORS),
       fillOpacity: 0.85,
-      weight: hasVS ? 2 : 0.3,
-      color: hasVS ? '#ffffff' : '#333',
-      opacity: hasVS ? 0.9 : 0.4
+      weight: 0.3,
+      color: '#333',
+      opacity: 0.4
     };
   }
 
   // --- Prospection scoring engine ---
   var PROSP_SIGNALS = [
-    { key: 'stat_payant',  label: 'Stationnement payant',     weight: 25, year: '2018',
+    { key: 'stat_payant',  label: 'Stationnement payant',     weight: 30, year: '2019',
       desc: 'Commune avec stationnement payant = besoin de verbalisation',
-      detail: 'Source : enquete GART/Cerema sur la reforme du stationnement payant sur voirie (data.gouv.fr, 2018, CSV 64 Ko). ' +
+      detail: 'Source : enquete GART/Cerema sur la reforme du stationnement payant sur voirie (data.gouv.fr, 2019, CSV). ' +
         'Donnee binaire (oui/non) indiquant si la commune a du stationnement payant. ' +
         'Signal : 1 si stationnement payant, 0 sinon. ' +
         'Logique : une commune avec du stationnement payant a un besoin concret de verbalisation et donc un marche potentiel.' },
-    { key: 'no_videoverb', label: 'Sans videoverbalisation',  weight: 25, year: '2025',
-      desc: 'Pas encore equipee = marche ouvert',
-      detail: 'Source : liste des communes equipees en videoverbalisation, scrappee depuis video-verbalisation.fr/villes.php (2025). ' +
-        'Donnee binaire inversee : on cherche les communes NON equipees. ' +
-        'Signal : 1 si la commune n\'a PAS de videoverbalisation, 0 si elle en a deja. ' +
-        'Logique : une commune deja equipee n\'est plus un prospect — on cible celles qui ne le sont pas encore.' },
-    { key: 'pm_count',     label: 'Effectif police mun.',     weight: 15, year: '2024',
+    { key: 'pm_count',     label: 'Effectif police mun.',     weight: 20, year: '2024',
       desc: 'Plus d\'agents = plus de moyens, rapporte a la population',
       detail: 'Source : effectifs de police municipale par commune, Ministere de l\'Interieur (data.gouv.fr, 2024, ODS/XLSX). ' +
         'On additionne les agents PM + ASVP, puis on calcule un ratio pour 10 000 habitants. ' +
         'Signal : ratio / 50, plafonne a 1. Exemple : 25 agents / 10k hab. = signal de 0.5. ' +
         'Logique : plus la commune a d\'agents, plus elle a les moyens et la volonte d\'investir dans la securite.' },
     { key: 'pm_growth',    label: 'Croissance PM',            weight: 10, year: '2019-2024',
-      desc: 'Effectifs en hausse = investissement securite en cours',
+      desc: 'Effectifs en hausse, ponderes par le volume',
       detail: 'Source : meme dataset police municipale, croise sur 6 annees (2019 a 2024). ' +
-        'On calcule la croissance relative : (effectif_2024 - effectif_2019) / effectif_2019, plafonnee entre 0 et 1. ' +
-        'Si effectif_2019 = 0 et effectif_2024 > 0, signal = 1 (creation d\'une police municipale). ' +
-        'Logique : une commune qui augmente ses effectifs est en dynamique d\'investissement securitaire.' },
-    { key: 'has_vs',       label: 'Videoprotection',          weight: 5,  year: '2012',
-      desc: 'Deja equipee en cameras = culture video existante',
-      detail: 'Source : fichier CNIL des autorisations de videoprotection (data.gouv.fr, 2012). ' +
-        'Donnee binaire : la commune a-t-elle au moins une autorisation de videoprotection ? ' +
-        'Signal : 1 si oui, 0 sinon. ' +
-        'Logique : une commune deja equipee en cameras a une culture de la video et sera plus receptive a la videoverbalisation. ' +
-        'Attention : donnees de 2012, potentiellement obsoletes.' },
-    { key: 'pop_sweet',    label: 'Taille commune',           weight: 20, year: '2021',
+        'On calcule la croissance relative ponderee par le volume : min(taux_croissance * sqrt(effectif_actuel) / 5, 1). ' +
+        'Logique : une commune qui augmente ses effectifs est en dynamique d\'investissement, mais la croissance est ponderee par la taille ' +
+        'pour eviter que les petites variations (0 a 1 agent) ne dominent le signal.' },
+    { key: 'accidents',    label: 'Accidents routiers',       weight: 15, year: '2023-2024',
+      desc: 'Plus d\'accidents = besoin de securisation routiere',
+      detail: 'Source : base de donnees BAAC des accidents corporels de la circulation routiere (ONISR, data.gouv.fr, 2023-2024). ' +
+        'On compte le nombre d\'accidents par commune sur 2 ans, rapporte a la population pour 10 000 habitants. ' +
+        'Signal : ratio / 30, plafonne a 1. ' +
+        'Logique : un taux d\'accidents eleve indique un besoin de securisation routiere et donc un argumentaire de vente pour la videoverbalisation.' },
+    { key: 'pop_sweet',    label: 'Taille commune',           weight: 25, year: '2021',
       desc: 'Communes 5k-100k habitants = cible ideale',
       detail: 'Source : population legale INSEE (2021), presente dans les donnees de surveillance. ' +
         'Transformation : courbe gaussienne en log centree sur 30 000 habitants (sigma = 1.2). ' +
@@ -661,7 +655,7 @@ input[type="range"]::-moz-range-thumb {
   var prospWeights = {};
   PROSP_SIGNALS.forEach(function(s) { prospWeights[s.key] = s.weight; });
 
-  var prospFilters = { statPayantOnly: false, noVideoverb: false, hasVs: false, popMin: 0 };
+  var prospFilters = { statPayantOnly: false, noVideoverb: false, popMin: 0 };
 
   // Score cache — invalidated when weights change
   var prospScoreCache = null;
@@ -688,21 +682,28 @@ input[type="range"]::-moz-range-thumb {
 
     var signals = {};
     signals.stat_payant = p.stat_payant ? 1 : 0;
-    signals.no_videoverb = p.videoverb ? 0 : 1;
     var pmCount = (p.pm || 0) + (p.asvp || 0);
     signals.pm_count = pop > 0 ? Math.min(pmCount / pop * 10000 / 50, 1) : 0;
+    // PM growth weighted by volume: growth_rate * sqrt(current_agents) / 5
     if (p.pm_trend && p.pm_trend.length >= 2) {
       var first = p.pm_trend[0];
       var last = p.pm_trend[p.pm_trend.length - 1];
+      var growthRate = 0;
       if (first > 0) {
-        signals.pm_growth = Math.min(Math.max((last - first) / first, 0), 1);
+        growthRate = Math.max((last - first) / first, 0);
       } else {
-        signals.pm_growth = last > 0 ? 1 : 0;
+        growthRate = last > 0 ? 1 : 0;
       }
+      signals.pm_growth = Math.min(growthRate * Math.sqrt(last) / 5, 1);
     } else {
       signals.pm_growth = 0;
     }
-    signals.has_vs = p.vs ? 1 : 0;
+    // Accidents per 10k inhabitants, capped
+    if (p.accidents && pop > 0) {
+      signals.accidents = Math.min(p.accidents / pop * 10000 / 30, 1);
+    } else {
+      signals.accidents = 0;
+    }
     if (pop > 0) {
       var logPop = Math.log(pop);
       var logCenter = Math.log(30000);
@@ -742,7 +743,6 @@ input[type="range"]::-moz-range-thumb {
     if (!p) return false;
     if (prospFilters.statPayantOnly && !p.stat_payant) return false;
     if (prospFilters.noVideoverb && p.videoverb) return false;
-    if (prospFilters.hasVs && !p.vs) return false;
     var pop = p.pop || 0;
     if (pop < prospFilters.popMin) return false;
     return true;
@@ -835,9 +835,9 @@ input[type="range"]::-moz-range-thumb {
           var yRange = p.pm_trend_years[0] + '-' + p.pm_trend_years[p.pm_trend_years.length - 1];
           lines.push(['Evol. PM', sign + pct + '%', yRange]);
         }
-        lines.push(['Stat. payant', p.stat_payant ? 'Oui' : 'Non', p.stat_payant_year || '2018']);
+        lines.push(['Stat. payant', p.stat_payant ? 'Oui' : 'Non', p.stat_payant_year || '2019']);
         lines.push(['Videoverb.', p.videoverb ? 'Oui' : 'Non', p.videoverb_year || '2025']);
-        lines.push(['Videoprot.', p.vs ? 'Oui' : 'Non', p.vs_year || '']);
+        if (p.accidents) lines.push(['Accidents', p.accidents + ' (3 ans)', p.accidents_years || '2023-2024']);
       }
 
       lines.forEach(function(line) {
@@ -899,8 +899,7 @@ input[type="range"]::-moz-range-thumb {
         document.getElementById('info-pm').textContent = (s.pm || 0) + ' agents';
         document.getElementById('info-asvp').textContent = (s.asvp || 0) + ' agents';
         document.getElementById('info-pop').textContent = s.pop ? s.pop.toLocaleString('fr') + ' hab.' : 'N/A';
-        document.getElementById('info-ratio').textContent = s.r ? s.r + ' agents/10k hab' : 'N/A';
-        document.getElementById('info-vs').textContent = s.vs ? 'Oui (2012)' : 'Non repertoriee';
+        document.getElementById('info-ratio').textContent = s.r ? s.r + ' agents/10k hab' + (s.r_raw ? ' (brut: ' + s.r_raw + ')' : '') : 'N/A';
       } else {
         survRow.style.display = 'none';
       }
@@ -1034,7 +1033,7 @@ input[type="range"]::-moz-range-thumb {
 
     var subtitles = {
       politique: 'Nuance politique du maire \u2014 Municipales 2020',
-      surveillance: 'Effectifs police municipale et videoprotection',
+      surveillance: 'Effectifs police municipale par commune',
       prospection: 'Score de potentiel pour la videoverbalisation — donnees croisees police, stationnement et equipements'
     };
     document.getElementById('subtitle').textContent = subtitles[mode];
@@ -1157,32 +1156,31 @@ input[type="range"]::-moz-range-thumb {
       legendItemsEl.appendChild(item);
     });
 
-    var vsItem = document.createElement('div');
-    vsItem.className = 'legend-item';
-    vsItem.style.cssText = 'margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);cursor:default;';
-    var vsBox = document.createElement('div');
-    vsBox.style.cssText = 'width:16px;height:16px;border:3px solid rgba(255,255,255,0.7);border-radius:3px;background:#666;margin-right:8px;box-shadow:0 0 2px rgba(0,0,0,0.5);';
-    var vsLabel = document.createElement('span');
-    vsLabel.className = 'legend-label';
-    vsLabel.textContent = 'Videoprotection';
-    vsItem.appendChild(vsBox);
-    vsItem.appendChild(vsLabel);
-    legendItemsEl.appendChild(vsItem);
+    // "No data" legend item
+    var noDataItem = document.createElement('div');
+    noDataItem.className = 'legend-item';
+    noDataItem.style.cssText = 'margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);cursor:default;';
+    var noDataBox = document.createElement('div');
+    noDataBox.style.cssText = 'width:16px;height:16px;border:2px dashed #444;border-radius:3px;background:#2a2a3e;margin-right:8px;';
+    var noDataLabel = document.createElement('span');
+    noDataLabel.className = 'legend-label';
+    noDataLabel.textContent = 'Pas de donnees';
+    noDataItem.appendChild(noDataBox);
+    noDataItem.appendChild(noDataLabel);
+    legendItemsEl.appendChild(noDataItem);
 
     var noteDiv = document.createElement('div');
     noteDiv.style.cssText = 'margin-top:8px;font-size:10px;color:#999;line-height:1.4;';
-    noteDiv.textContent = 'Police mun. : donnees 2024 | Videoprot. : donnees 2012 | Pop. : INSEE';
+    noteDiv.textContent = 'Police mun. : donnees 2024 | Pop. : INSEE 2021 | Ratio plafonne a 50';
     legendItemsEl.appendChild(noteDiv);
   }
 
   // Surveillance filter controls
   document.getElementById('ratio-slider').addEventListener('input', updateSurvFilters);
-  document.getElementById('vs-only').addEventListener('change', updateSurvFilters);
   document.getElementById('data-only').addEventListener('change', updateSurvFilters);
 
   function updateSurvFilters() {
     survFilters.ratioMin = parseInt(document.getElementById('ratio-slider').value);
-    survFilters.vsOnly = document.getElementById('vs-only').checked;
     survFilters.dataOnly = document.getElementById('data-only').checked;
     document.getElementById('ratio-value').textContent = survFilters.ratioMin;
 
@@ -1195,21 +1193,19 @@ input[type="range"]::-moz-range-thumb {
     var stats = {};
     FAMILLES.forEach(function(f) {
       if (f.key === 'Non class\u00e9') return;
-      stats[f.key] = { label: f.label, color: f.color, count: 0, totalRatio: 0, ratioCount: 0, vsCount: 0 };
+      stats[f.key] = { label: f.label, color: f.color, count: 0, totalRatio: 0, ratioCount: 0 };
     });
 
     for (var code in surv) {
       var s = surv[code];
       var m = maires[code];
       if (!m || m.f === 'Non class\u00e9' || !stats[m.f]) continue;
-      if (survFilters.vsOnly && !s.vs) continue;
       if (s.r !== undefined && s.r < survFilters.ratioMin) continue;
       if (activeFilter && m.f !== activeFilter) continue;
 
       var fam = stats[m.f];
       fam.count++;
       if (s.r !== undefined) { fam.totalRatio += s.r; fam.ratioCount++; }
-      if (s.vs) fam.vsCount++;
     }
     return stats;
   }
@@ -1225,7 +1221,7 @@ input[type="range"]::-moz-range-thumb {
     var table = document.createElement('table');
     var thead = document.createElement('thead');
     var headerRow = document.createElement('tr');
-    ['Famille', 'Communes', 'Moy. ratio', '% videoprot.'].forEach(function(text) {
+    ['Famille', 'Communes', 'Moy. ratio'].forEach(function(text) {
       var th = document.createElement('th');
       th.textContent = text;
       headerRow.appendChild(th);
@@ -1243,7 +1239,6 @@ input[type="range"]::-moz-range-thumb {
       if (!s) return;
 
       var avgRatio = s.ratioCount > 0 ? (s.totalRatio / s.ratioCount) : 0;
-      var vsPct = s.count > 0 ? Math.round(s.vsCount / s.count * 100) : 0;
       totalCommunes += s.count;
 
       if (avgRatio > maxRatio && s.ratioCount > 0) { maxRatio = avgRatio; maxFam = f.label; }
@@ -1273,13 +1268,9 @@ input[type="range"]::-moz-range-thumb {
       var tdRatio = document.createElement('td');
       tdRatio.textContent = s.ratioCount > 0 ? avgRatio.toFixed(1) : '-';
 
-      var tdVs = document.createElement('td');
-      tdVs.textContent = s.count > 0 ? vsPct + '%' : '-';
-
       tr.appendChild(tdFam);
       tr.appendChild(tdCount);
       tr.appendChild(tdRatio);
-      tr.appendChild(tdVs);
       tbody.appendChild(tr);
     });
 
@@ -1304,7 +1295,7 @@ input[type="range"]::-moz-range-thumb {
     }
 
     noteEl.textContent = 'Base sur ' + totalCommunes + ' communes avec donnees surveillance et nuance politique attribuee. ' +
-      'Les communes "Non classe" (92% du total) sont exclues. Sources : police mun. 2024, videoprot. 2012, pop. INSEE.';
+      'Les communes "Non classe" (92% du total) sont exclues. Sources : police mun. 2024, pop. INSEE 2021. Ratio plafonne a 50/10k hab.';
 
     if (statsBadge) statsBadge.textContent = totalCommunes;
   }
@@ -1410,8 +1401,7 @@ input[type="range"]::-moz-range-thumb {
 
     var filterDefs = [
       { key: 'statPayantOnly', label: 'Stat. payant uniquement' },
-      { key: 'noVideoverb', label: 'Sans videoverbalisation' },
-      { key: 'hasVs', label: 'Avec videoprotection' }
+      { key: 'noVideoverb', label: 'Sans videoverbalisation' }
     ];
 
     filterDefs.forEach(function(fd) {
@@ -1466,9 +1456,9 @@ input[type="range"]::-moz-range-thumb {
     noteEl.appendChild(noteTitle);
     var sourcesList = [
       'Police municipale : effectifs par commune 2019-2024, Ministere de l\'Interieur (data.gouv.fr, ODS/XLSX)',
-      'Stationnement payant : enquete reforme stationnement sur voirie, GART/Cerema 2018 (data.gouv.fr, CSV)',
+      'Stationnement payant : enquete reforme stationnement sur voirie, GART/Cerema 2019 (data.gouv.fr, CSV)',
       'Videoverbalisation : communes equipees, video-verbalisation.fr 2025 (scrapping HTML)',
-      'Videoprotection : autorisations CNIL 2012 (data.gouv.fr)',
+      'Accidents routiers : BAAC accidents corporels 2023-2024, ONISR (data.gouv.fr, CSV)',
       'Population : pop. legale INSEE 2021'
     ];
     var ul = document.createElement('ul');

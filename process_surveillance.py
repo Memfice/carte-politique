@@ -2,10 +2,12 @@
 """
 Download and process surveillance datasets from data.gouv.fr.
 Produces surveillance.json indexed by INSEE code.
+
+Data sources:
+- Police municipale effectifs 2024 (Ministere de l'Interieur, ODS)
+- Population legale INSEE 2021 (XLSX)
 """
-import csv
 import json
-import io
 import sys
 import unicodedata
 import urllib.request
@@ -14,8 +16,10 @@ import os
 
 # URLs
 POLICE_MUN_URL = "https://www.data.gouv.fr/api/1/datasets/r/081e94fe-b257-4ae7-bc31-bf1f2eb6c968"
-VIDEOSURV_URL = "https://www.data.gouv.fr/api/1/datasets/r/b56c1eda-6b75-468a-b33f-147d37224c9e"
 POPULATION_URL = "https://www.data.gouv.fr/api/1/datasets/r/be303501-5c46-48a1-87b4-3d198423ff49"
+
+# Winsorize ratio at this value (agents per 10k inhabitants)
+RATIO_CAP = 50
 
 
 def normalize(name):
@@ -25,9 +29,7 @@ def normalize(name):
     name = name.upper().strip()
     if "(" in name:
         name = name[:name.index("(")].strip()
-    # Replace all apostrophe variants (straight, curly, backtick) with space
     name = name.replace("-", " ").replace("'", " ").replace("\u2019", " ").replace("\u2018", " ").replace("`", " ")
-    # Collapse multiple spaces
     while "  " in name:
         name = name.replace("  ", " ")
     name = name.replace("ST ", "SAINT ").replace("STE ", "SAINTE ")
@@ -96,45 +98,21 @@ def parse_police_municipale(ods_path, lookup):
     return result
 
 
-def parse_videosurveillance(csv_text, lookup):
-    """Parse videosurveillance CSV. Returns set of INSEE codes."""
-    reader = csv.DictReader(io.StringIO(csv_text))
-    result = set()
-    matched = 0
-    unmatched = 0
-
-    for row in reader:
-        dept = row["Numero departement"].strip()
-        name = row["Ville"].strip()
-
-        key = (dept, normalize(name))
-        insee = lookup.get(key)
-        if insee:
-            result.add(insee)
-            matched += 1
-        else:
-            unmatched += 1
-
-    print(f"Videosurveillance: {matched} matched, {unmatched} unmatched", file=sys.stderr)
-    return result
-
-
 def parse_population(xlsx_path):
     """Parse INSEE population XLSX. Returns dict {insee_code: population}."""
     import pandas as pd
+    import re
 
     df = pd.read_excel(xlsx_path, engine="openpyxl")
     result = {}
 
-    # The file has columns including codgeo (INSEE code) and population columns
-    import re
     pop_cols = [c for c in df.columns if str(c).startswith("pop_municipale") or str(c).startswith("pmun") or re.match(r"^p\d+_pop$", str(c))]
     if not pop_cols:
         for col in df.columns:
             print(f"  Column: {col}", file=sys.stderr)
         raise ValueError("Cannot find population column. See column names above.")
 
-    pop_col = pop_cols[-1]  # Most recent
+    pop_col = pop_cols[-1]
     code_col = None
     for candidate in ["codgeo", "CODGEO", "code_commune", "COM"]:
         if candidate in df.columns:
@@ -190,11 +168,6 @@ def main():
     police_data = parse_police_municipale(tmp.name, lookup)
     os.unlink(tmp.name)
 
-    print("Downloading videosurveillance CSV...", file=sys.stderr)
-    with urllib.request.urlopen(VIDEOSURV_URL) as resp:
-        csv_text = resp.read().decode("utf-8")
-    vs_codes = parse_videosurveillance(csv_text, lookup)
-
     print("Downloading population INSEE XLSX...", file=sys.stderr)
     tmp_pop = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
     urllib.request.urlretrieve(POPULATION_URL, tmp_pop.name)
@@ -202,20 +175,20 @@ def main():
     os.unlink(tmp_pop.name)
 
     result = {}
-    all_codes = set(police_data.keys()) | vs_codes
+    all_codes = set(police_data.keys())
 
     for code in all_codes:
         entry = {}
-        if code in police_data:
-            entry["pm"] = police_data[code]["pm"]
-            entry["asvp"] = police_data[code]["asvp"]
-        if code in vs_codes:
-            entry["vs"] = 1
+        entry["pm"] = police_data[code]["pm"]
+        entry["asvp"] = police_data[code]["asvp"]
         if code in population:
             entry["pop"] = population[code]
-            agents = (entry.get("pm", 0) + entry.get("asvp", 0))
+            agents = entry["pm"] + entry["asvp"]
             if agents > 0 and population[code] > 0:
-                entry["r"] = round(agents / population[code] * 10000, 1)
+                ratio = agents / population[code] * 10000
+                entry["r"] = round(min(ratio, RATIO_CAP), 1)
+                if ratio > RATIO_CAP:
+                    entry["r_raw"] = round(ratio, 1)
         result[code] = entry
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -224,11 +197,12 @@ def main():
     size_kb = os.path.getsize(output_path) / 1024
     print(f"\nOutput: {output_path} ({size_kb:.0f} KB)", file=sys.stderr)
     print(f"  {len(police_data)} communes with police municipale data", file=sys.stderr)
-    print(f"  {len(vs_codes)} communes with videosurveillance", file=sys.stderr)
     pop_count = sum(1 for v in result.values() if "pop" in v)
     ratio_count = sum(1 for v in result.values() if "r" in v)
+    capped = sum(1 for v in result.values() if "r_raw" in v)
     print(f"  {pop_count} communes with population data", file=sys.stderr)
     print(f"  {ratio_count} communes with agent/population ratio", file=sys.stderr)
+    print(f"  {capped} communes with ratio capped at {RATIO_CAP}", file=sys.stderr)
     print(f"  {len(result)} communes total in output", file=sys.stderr)
 
 
