@@ -198,6 +198,46 @@ input[type="checkbox"] {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* --- Search bar --- */
+#search-box {
+  position: absolute; top: 12px; left: 12px; z-index: 1001;
+  width: 280px;
+}
+#search-input {
+  width: 100%; padding: 10px 14px 10px 36px;
+  background: rgba(15,15,30,0.82); backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+  color: #e0e0e0; font-size: 14px; outline: none;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  transition: border-color 0.2s;
+}
+#search-input::placeholder { color: #666; }
+#search-input:focus { border-color: rgba(255,255,255,0.25); }
+#search-icon {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: #666; font-size: 14px; pointer-events: none;
+}
+#search-results {
+  position: absolute; top: 100%; left: 0; right: 0;
+  margin-top: 4px; max-height: 320px; overflow-y: auto;
+  background: rgba(15,15,30,0.95); backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  display: none;
+}
+.search-item {
+  padding: 8px 14px; cursor: pointer; font-size: 13px;
+  color: #ccc; display: flex; justify-content: space-between; align-items: center;
+}
+.search-item:hover, .search-item.active { background: rgba(255,255,255,0.06); color: #fff; }
+.search-item:first-child { border-radius: 10px 10px 0 0; }
+.search-item:last-child { border-radius: 0 0 10px 10px; }
+.search-item-code { font-size: 11px; color: #666; }
+.search-item-swatch {
+  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
+  margin-right: 6px; vertical-align: middle;
+}
+
 /* --- Responsive --- */
 @media (max-width: 768px) {
   #stats-panel {
@@ -209,6 +249,7 @@ input[type="checkbox"] {
   #title-bar h1 { font-size: 18px; }
   #title-bar p { font-size: 12px; }
   .mode-btn { padding: 6px 14px; font-size: 12px; }
+  #search-box { width: 220px; top: 8px; left: 8px; }
   #filter-bar, #surv-filters { top: 90px; }
   #filter-bar { max-width: 95vw; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
   #surv-filters { flex-direction: column; align-items: flex-start; }
@@ -306,6 +347,12 @@ input[type="range"]::-moz-range-thumb {
     <input type="checkbox" id="data-only">
     Avec donnees uniquement
   </label>
+</div>
+
+<div id="search-box">
+  <span id="search-icon">&#128269;</span>
+  <input type="text" id="search-input" placeholder="Rechercher une commune..." autocomplete="off">
+  <div id="search-results"></div>
 </div>
 
 <div id="map"></div>
@@ -1521,6 +1568,144 @@ input[type="range"]::-moz-range-thumb {
     setTimeout(function() {
       el.classList.add('visible');
     }, i * 120);
+  });
+
+  // --- Search bar ---
+  var searchInput = document.getElementById('search-input');
+  var searchResults = document.getElementById('search-results');
+  var searchIndex = [];
+  var layerByCode = {};
+
+  // Build search index from maires data
+  for (var code in maires) {
+    searchIndex.push({ code: code, name: maires[code].n, nameLower: maires[code].n.toLowerCase(), color: maires[code].cl });
+  }
+
+  // Build layer lookup for quick access
+  geoLayer.eachLayer(function(layer) {
+    var c = layer.feature.properties.codgeo;
+    if (c) layerByCode[c] = layer;
+  });
+
+  var searchActiveIdx = -1;
+
+  function normalizeSearch(str) {
+    return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  function doSearch(query) {
+    if (!query || query.length < 2) {
+      searchResults.style.display = 'none';
+      return;
+    }
+    var q = normalizeSearch(query);
+    var matches = [];
+
+    // Exact start matches first, then contains
+    var startMatches = [];
+    var containsMatches = [];
+    for (var i = 0; i < searchIndex.length && matches.length < 50; i++) {
+      var entry = searchIndex[i];
+      var normalized = normalizeSearch(entry.name);
+      if (normalized.indexOf(q) === 0) {
+        startMatches.push(entry);
+      } else if (normalized.indexOf(q) > 0 || entry.code.indexOf(q) === 0) {
+        containsMatches.push(entry);
+      }
+    }
+    matches = startMatches.concat(containsMatches).slice(0, 8);
+
+    if (matches.length === 0) {
+      searchResults.style.display = 'none';
+      return;
+    }
+
+    searchResults.textContent = '';
+    searchActiveIdx = -1;
+    matches.forEach(function(m, idx) {
+      var div = document.createElement('div');
+      div.className = 'search-item';
+      div.setAttribute('data-code', m.code);
+      div.setAttribute('data-idx', idx);
+
+      var left = document.createElement('span');
+      var swatch = document.createElement('span');
+      swatch.className = 'search-item-swatch';
+      swatch.style.background = m.color || '#666';
+      left.appendChild(swatch);
+      left.appendChild(document.createTextNode(m.name));
+
+      var right = document.createElement('span');
+      right.className = 'search-item-code';
+      right.textContent = m.code;
+
+      div.appendChild(left);
+      div.appendChild(right);
+
+      div.addEventListener('click', function() {
+        selectCommune(m.code, m.name);
+      });
+      div.addEventListener('mouseenter', function() {
+        searchActiveIdx = idx;
+        updateSearchActive();
+      });
+
+      searchResults.appendChild(div);
+    });
+    searchResults.style.display = 'block';
+  }
+
+  function updateSearchActive() {
+    var items = searchResults.querySelectorAll('.search-item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.toggle('active', i === searchActiveIdx);
+    }
+  }
+
+  function selectCommune(code, name) {
+    searchInput.value = name;
+    searchResults.style.display = 'none';
+
+    var layer = layerByCode[code];
+    if (layer) {
+      map.fitBounds(layer.getBounds(), { maxZoom: 13, padding: [50, 50] });
+      // Flash highlight
+      layer.setStyle({ weight: 3, color: '#fff', opacity: 1, fillOpacity: 1 });
+      setTimeout(function() { geoLayer.resetStyle(layer); }, 2000);
+    }
+  }
+
+  searchInput.addEventListener('input', function() {
+    doSearch(this.value.trim());
+  });
+
+  searchInput.addEventListener('keydown', function(e) {
+    var items = searchResults.querySelectorAll('.search-item');
+    if (!items.length) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      searchActiveIdx = Math.min(searchActiveIdx + 1, items.length - 1);
+      updateSearchActive();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      searchActiveIdx = Math.max(searchActiveIdx - 1, 0);
+      updateSearchActive();
+    } else if (e.key === 'Enter' && searchActiveIdx >= 0) {
+      e.preventDefault();
+      var item = items[searchActiveIdx];
+      selectCommune(item.getAttribute('data-code'), item.querySelector('span').textContent);
+    } else if (e.key === 'Escape') {
+      searchResults.style.display = 'none';
+      searchInput.blur();
+    }
+  });
+
+  // Close results when clicking outside
+  document.addEventListener('click', function(e) {
+    if (!document.getElementById('search-box').contains(e.target)) {
+      searchResults.style.display = 'none';
+    }
   });
 
 })();
