@@ -219,8 +219,8 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   <div id="methodo-content"></div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/topojson-client@3.1.0/dist/topojson-client.min.js" crossorigin="anonymous"></script>
 <script>
 (async function() {
   var map = L.map('map', {
@@ -660,7 +660,7 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       var score = computeProspScore(code);
       infoMetric.textContent = score !== null ? 'Score : ' + score + '/100' : 'Score : N/A';
     } else if (currentMode === 'politique') {
-      infoMetric.textContent = m ? (m.f + ' \u2014 ' + m.lb + ' (' + m.nu + ')') : 'Pas de donnees';
+      infoMetric.textContent = m ? (m.f + ' \u2014 ' + (m.lb || '') + (m.nu ? ' (' + m.nu + ')' : '')) : 'Pas de donnees';
     } else if (currentMode === 'securite') {
       var d = delinq[code];
       if (d) {
@@ -727,7 +727,7 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       var maireEl = document.createElement('div');
       maireEl.className = 'detail-header-sub';
       maireEl.style.marginTop = '4px';
-      maireEl.textContent = 'Maire : ' + m.m + ' \u2014 ' + (m.lb || '') + ' (' + (m.nu || '') + ')';
+      maireEl.textContent = 'Maire : ' + m.m + ' \u2014 ' + (m.lb || '') + (m.nu ? ' (' + m.nu + ')' : '');
       headerSec.appendChild(maireEl);
     }
 
@@ -831,32 +831,38 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       survTitle.textContent = 'SURVEILLANCE';
       survSec.appendChild(survTitle);
 
-      var sData = s || {};
       var pData = p || {};
 
-      var kvData = [
-        { label: 'Police municipale', value: (sData.pm || pData.pm || 0) + ' agents' },
-        { label: 'ASVP', value: (sData.asvp || pData.asvp || 0) + ' agents' }
-      ];
-      var ratioVal = sData.r || 0;
-      var ratioText = ratioVal.toString() + ' /10k';
-      if (sData.r_raw) ratioText += ' (brut: ' + sData.r_raw + ')';
-      kvData.push({ label: 'Ratio /10k', value: ratioText });
-      kvData.push({ label: 'Population', value: (popVal || 0).toLocaleString('fr') });
+      if (!s) {
+        var noDataEl = document.createElement('div');
+        noDataEl.className = 'detail-missing';
+        noDataEl.textContent = 'Donnees indisponibles';
+        survSec.appendChild(noDataEl);
+      } else {
+        var kvData = [
+          { label: 'Police municipale', value: (s.pm || 0) + ' agents' },
+          { label: 'ASVP', value: (s.asvp || 0) + ' agents' }
+        ];
+        var ratioVal = s.r || 0;
+        var ratioText = ratioVal.toString() + ' /10k';
+        if (s.r_raw) ratioText += ' (brut: ' + s.r_raw + ')';
+        kvData.push({ label: 'Ratio /10k', value: ratioText });
+        kvData.push({ label: 'Population', value: (popVal || 0).toLocaleString('fr') });
 
-      kvData.forEach(function(kv) {
-        var row = document.createElement('div');
-        row.className = 'detail-kv';
-        var lbl = document.createElement('span');
-        lbl.className = 'detail-kv-label';
-        lbl.textContent = kv.label;
-        var val = document.createElement('span');
-        val.className = 'detail-kv-value';
-        val.textContent = kv.value;
-        row.appendChild(lbl);
-        row.appendChild(val);
-        survSec.appendChild(row);
-      });
+        kvData.forEach(function(kv) {
+          var row = document.createElement('div');
+          row.className = 'detail-kv';
+          var lbl = document.createElement('span');
+          lbl.className = 'detail-kv-label';
+          lbl.textContent = kv.label;
+          var val = document.createElement('span');
+          val.className = 'detail-kv-value';
+          val.textContent = kv.value;
+          row.appendChild(lbl);
+          row.appendChild(val);
+          survSec.appendChild(row);
+        });
+      }
 
       // PM trend sparkline
       if (pData.pm_trend && pData.pm_trend.length >= 2) {
@@ -945,9 +951,8 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       var qpvWrap = document.createElement('div');
       qpvWrap.style.marginTop = '4px';
       qpvWrap.appendChild(qpvBadge);
-      // Append to surveillance section if it exists, else to last section
-      var lastSec = content.lastChild;
-      if (lastSec) lastSec.appendChild(qpvWrap);
+      // Append to header section
+      headerSec.appendChild(qpvWrap);
     }
 
     // Delinquance section
@@ -1195,6 +1200,9 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       btns[i].classList.toggle('active', btns[i].getAttribute('data-mode') === mode);
     }
 
+    // Close detail panel
+    document.getElementById('detail-panel').classList.remove('open');
+
     // Clear cmd-content
     document.getElementById('cmd-content').textContent = '';
 
@@ -1258,6 +1266,7 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       prospFilters.statPayantOnly = this.checked;
       invalidateProspCache();
       geoLayer.setStyle(getStyle);
+      prospListLimit = 200;
       renderProspectList();
       updateBottomBar();
     });
@@ -1277,6 +1286,7 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       prospFilters.noVideoverb = this.checked;
       invalidateProspCache();
       geoLayer.setStyle(getStyle);
+      prospListLimit = 200;
       renderProspectList();
       updateBottomBar();
     });
@@ -1296,6 +1306,7 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       prospFilters.qpvOnly = this.checked;
       invalidateProspCache();
       geoLayer.setStyle(getStyle);
+      prospListLimit = 200;
       renderProspectList();
       updateBottomBar();
     });
@@ -1320,14 +1331,19 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
     var sv3 = document.createElement('span');
     sv3.className = 'slider-value';
     sv3.textContent = popCompact(prospFilters.popMin);
+    var popMinTimer = null;
     sl3.addEventListener('input', function() {
       var v = parseInt(this.value, 10);
       prospFilters.popMin = v;
       sv3.textContent = popCompact(v);
       invalidateProspCache();
-      geoLayer.setStyle(getStyle);
-      renderProspectList();
-      updateBottomBar();
+      if (popMinTimer) clearTimeout(popMinTimer);
+      popMinTimer = setTimeout(function() {
+        geoLayer.setStyle(getStyle);
+        prospListLimit = 200;
+        renderProspectList();
+        updateBottomBar();
+      }, 50);
     });
     row3.appendChild(sl3);
     row3.appendChild(sv3);
@@ -1379,6 +1395,7 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
         prospWeights[sig.key] = v;
         valSpan.textContent = v.toString();
         scheduleProspRefresh();
+        prospListLimit = 200;
         renderProspectList();
       });
 
@@ -1438,7 +1455,6 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   var prospListLimit = 200;
 
   function renderProspectList() {
-    prospListLimit = 200;
     var wrap = document.getElementById('prospect-list-wrap');
     if (!wrap) return;
     wrap.textContent = '';
@@ -2438,6 +2454,10 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       var secTotalRatio = 0;
       var secRatioCount = 0;
       for (var code in delinq) {
+        if (activeFilter) {
+          var secM = maires[code];
+          if (!secM || secM.f !== activeFilter) continue;
+        }
         secWithData++;
         var secR = getSecuRatio(code);
         if (secR !== null && secR >= secuFilters.ratioMin) { secTotalRatio += secR; secRatioCount++; }
@@ -2450,6 +2470,10 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       var totalRatio = 0;
       var ratioCount = 0;
       for (var code in surv) {
+        if (activeFilter) {
+          var survM = maires[code];
+          if (!survM || survM.f !== activeFilter) continue;
+        }
         withData++;
         if (surv[code].r) { totalRatio += surv[code].r; ratioCount++; }
       }
@@ -2485,8 +2509,10 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
   var layerByCode = {};
 
   // Build search index from maires data
+  var searchIndexedCodes = {};
   for (var code in maires) {
     searchIndex.push({ code: code, name: maires[code].n, nameLower: maires[code].n.toLowerCase(), color: maires[code].cl });
+    searchIndexedCodes[code] = true;
   }
 
   // Build layer lookup for quick access
@@ -2494,6 +2520,18 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
     var c = layer.feature.properties.codgeo;
     if (c) layerByCode[c] = layer;
   });
+
+  // Add communes from other datasets missing from maires
+  var extraSources = [surv, prosp, delinq];
+  for (var si = 0; si < extraSources.length; si++) {
+    var src = extraSources[si];
+    for (var xCode in src) {
+      if (searchIndexedCodes[xCode]) continue;
+      searchIndexedCodes[xCode] = true;
+      var xName = xCode; // fallback: use INSEE code as name
+      searchIndex.push({ code: xCode, name: xName, nameLower: xName.toLowerCase(), color: '#666' });
+    }
+  }
 
   var searchActiveIdx = -1;
 
