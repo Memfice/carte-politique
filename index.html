@@ -7,308 +7,161 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-#map { width: 100vw; height: 100vh; background: #1a1a2e; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0a0b10; color: #e2e4e9; font-size: 13px; line-height: 1.4; }
 
-/* --- Glassmorphism card base --- */
-#legend, #info, #stats-panel, #surv-filters {
-  background: rgba(15,15,30,0.82); backdrop-filter: blur(16px);
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.08);
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  color: #e0e0e0;
-}
+/* --- App Layout --- */
+#app { display: grid; grid-template-rows: 44px 1fr 28px; grid-template-columns: 360px 1fr; height: 100vh; width: 100vw; }
+#top-bar { grid-column: 1 / -1; display: flex; align-items: center; padding: 0 16px; background: #0d0f17; border-bottom: 1px solid rgba(255,255,255,0.06); z-index: 100; gap: 12px; }
+#cmd-panel { grid-row: 2; grid-column: 1; background: #111318; border-right: 1px solid rgba(255,255,255,0.06); overflow-y: auto; overflow-x: hidden; }
+#map { grid-row: 2; grid-column: 2; background: #1a1a2e; position: relative; }
+#bottom-bar { grid-column: 1 / -1; display: flex; align-items: center; padding: 0 16px; background: #0d0f17; border-top: 1px solid rgba(255,255,255,0.06); font-size: 12px; color: #8b8f98; gap: 16px; }
 
-#legend {
-  position: absolute; bottom: 30px; left: 10px; z-index: 1000;
-  padding: 16px 20px;
-  font-size: 14px; max-width: 280px;
-}
-#legend h3 { margin-bottom: 8px; font-size: 14px; font-weight: 700; color: #e0e0e0; }
-.legend-item { display: flex; align-items: center; margin: 4px 0; cursor: pointer; padding: 2px 4px; }
-.legend-item:hover { background: rgba(255,255,255,0.06); border-radius: 4px; }
-.legend-swatch {
-  width: 18px; height: 18px; border-radius: 4px;
-  margin-right: 10px; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.15);
-  transition: box-shadow 0.2s;
-}
-.legend-item:hover .legend-swatch {
-  box-shadow: 0 0 8px currentColor;
-}
-.legend-label { font-size: 13px; color: #ccc; }
-.legend-count { font-size: 11px; color: #777; margin-left: auto; padding-left: 8px; }
+/* --- Scrollbar --- */
+#cmd-panel::-webkit-scrollbar { width: 5px; }
+#cmd-panel::-webkit-scrollbar-track { background: transparent; }
+#cmd-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+#cmd-panel::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
 
-#info {
-  position: fixed; z-index: 1100;
-  padding: 16px 20px; pointer-events: none;
-  font-size: 14px; min-width: 240px; max-width: 320px; display: none;
-  transform-origin: top left;
-}
-#info h3 { font-size: 16px; margin-bottom: 6px; font-weight: 700; letter-spacing: -0.3px; color: #fff; }
-#info .detail { margin: 3px 0; }
-#info .detail strong { display: inline-block; min-width: 60px; color: #999; }
+/* --- Top Bar --- */
+#search-box { position: relative; width: 260px; flex-shrink: 0; }
+#search-input { width: 100%; padding: 7px 12px 7px 32px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; color: #e2e4e9; font-size: 13px; outline: none; transition: border-color 0.15s; }
+#search-input::placeholder { color: #555; }
+#search-input:focus { border-color: rgba(255,255,255,0.2); }
+#search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #555; font-size: 13px; pointer-events: none; }
+#search-results { position: absolute; top: 100%; left: 0; right: 0; margin-top: 4px; max-height: 320px; overflow-y: auto; background: #1a1c24; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; display: none; z-index: 200; }
+.search-item { padding: 7px 12px; cursor: pointer; font-size: 13px; color: #8b8f98; display: flex; justify-content: space-between; align-items: center; }
+.search-item:hover, .search-item.active { background: rgba(255,255,255,0.06); color: #e2e4e9; }
+.search-item-code { font-size: 11px; color: #555; }
+.search-item-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
 
-#title-bar {
-  position: absolute; top: 0; left: 0; right: 0;
-  z-index: 1000; padding: 18px 32px 14px;
-  text-align: center;
-  background: linear-gradient(180deg, rgba(15,15,30,0.92) 0%, rgba(15,15,30,0.75) 80%, transparent 100%);
-  backdrop-filter: blur(12px);
-  color: #e0e0e0;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  opacity: 0;
-}
-#title-bar h1 {
-  font-size: 26px; font-weight: 800; letter-spacing: -0.5px;
-  color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.4);
-}
-#title-bar p {
-  font-size: 14px; color: rgba(255,255,255,0.6); margin-top: 4px;
-  font-weight: 400; letter-spacing: 0.2px;
-}
+#mode-tabs { display: flex; gap: 0; margin-left: auto; background: rgba(255,255,255,0.04); border-radius: 6px; padding: 2px; position: relative; }
+.mode-btn { padding: 6px 18px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; border-radius: 4px; background: transparent; color: #8b8f98; transition: color 0.15s, background 0.15s; }
+.mode-btn:hover { color: #c0c3ca; }
+.mode-btn.active { color: #e2e4e9; background: rgba(255,255,255,0.08); }
+#mode-indicator { position: absolute; bottom: 0; height: 2px; border-radius: 1px; transition: left 0.2s ease, width 0.2s ease, background 0.2s ease; }
+#btn-methodo { background: none; border: 1px solid rgba(255,255,255,0.08); color: #8b8f98; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: all 0.15s; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+#btn-methodo:hover { color: #e2e4e9; border-color: rgba(255,255,255,0.2); }
 
-#loading {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
-  z-index: 2000; background: rgba(15,15,30,0.95); padding: 30px 40px;
-  border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  text-align: center; font-size: 16px; color: #e0e0e0;
-}
-#loading .spinner {
-  width: 40px; height: 40px; border: 4px solid rgba(255,255,255,0.1);
-  border-top-color: #4a90d9; border-radius: 50%;
-  animation: spin 0.8s linear infinite; margin: 0 auto 15px;
-}
+/* --- Command Panel Sections --- */
+.cmd-section { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.cmd-section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #555; margin-bottom: 8px; }
+.cmd-section-collapsible { cursor: pointer; display: flex; align-items: center; justify-content: space-between; }
+.cmd-section-collapsible .chevron { transition: transform 0.15s; font-size: 11px; color: #555; }
+.cmd-section-collapsible.open .chevron { transform: rotate(90deg); }
+.cmd-section-body { overflow: hidden; }
+.cmd-section-body.collapsed { display: none; }
+
+/* --- Filters --- */
+.filter-row { display: flex; align-items: center; gap: 6px; margin: 4px 0; font-size: 13px; }
+.filter-row label { display: flex; align-items: center; gap: 5px; cursor: pointer; color: #8b8f98; }
+.filter-row label:hover { color: #e2e4e9; }
+input[type="checkbox"] { accent-color: #4ecdc4; }
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; outline: none; flex: 1; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #4ecdc4; cursor: pointer; }
+input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius: 50%; border: none; background: #4ecdc4; cursor: pointer; }
+.slider-value { min-width: 32px; text-align: right; font-weight: 600; font-size: 12px; color: #8b8f98; }
+
+/* --- Filter pills (politique mode) --- */
+.filter-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.filter-pill { padding: 4px 10px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.08); background: transparent; cursor: pointer; font-size: 12px; color: #8b8f98; transition: all 0.15s; }
+.filter-pill:hover { border-color: rgba(255,255,255,0.2); color: #e2e4e9; }
+.filter-pill.active { border-color: currentColor; color: #fff; }
+
+/* --- Score Distribution Histogram --- */
+.histogram { display: flex; align-items: flex-end; gap: 2px; height: 40px; margin: 4px 0; }
+.histogram-bar { flex: 1; background: rgba(255,255,255,0.08); border-radius: 2px 2px 0 0; min-height: 2px; transition: background 0.15s; }
+.histogram-labels { display: flex; justify-content: space-between; font-size: 10px; color: #555; margin-top: 2px; }
+
+/* --- Prospect List --- */
+.prospect-list { list-style: none; }
+.prospect-row { display: grid; grid-template-columns: 1fr auto; gap: 4px; padding: 8px 16px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.03); transition: background 0.1s; align-items: center; }
+.prospect-row:hover { background: rgba(255,255,255,0.04); }
+.prospect-row.selected { background: rgba(78,205,196,0.08); }
+.prospect-name { font-size: 13px; color: #e2e4e9; display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.prospect-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.prospect-meta { font-size: 11px; color: #555; }
+.prospect-score-wrap { display: flex; align-items: center; gap: 6px; }
+.prospect-score { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 24px; text-align: right; }
+.prospect-bar { width: 40px; height: 5px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+.prospect-bar-fill { height: 100%; border-radius: 3px; }
+.prospect-signals { display: flex; gap: 3px; font-size: 11px; color: #555; }
+.prospect-more { padding: 10px 16px; text-align: center; font-size: 12px; color: #4ecdc4; cursor: pointer; }
+.prospect-more:hover { background: rgba(255,255,255,0.04); }
+
+/* --- Legend (compact) --- */
+.legend-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; font-size: 12px; color: #8b8f98; }
+.legend-swatch { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; }
+.legend-count { margin-left: auto; font-size: 11px; color: #555; }
+
+/* --- Info tooltip (hover, minimal) --- */
+#info { position: fixed; z-index: 300; padding: 8px 12px; pointer-events: none; display: none; background: #1a1c24; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 12px; max-width: 260px; }
+#info-name { font-weight: 600; color: #e2e4e9; margin-bottom: 2px; }
+#info-metric { color: #8b8f98; }
+
+/* --- Detail Panel (right overlay) --- */
+#detail-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 400px; background: #111318; border-left: 1px solid rgba(255,255,255,0.06); box-shadow: -8px 0 24px rgba(0,0,0,0.3); z-index: 150; overflow-y: auto; transform: translateX(100%); transition: transform 0.2s ease; }
+#detail-panel.open { transform: translateX(0); }
+#detail-close { position: sticky; top: 0; display: flex; justify-content: flex-end; padding: 8px 12px; background: #111318; z-index: 1; }
+#detail-close button { background: none; border: none; color: #555; font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+#detail-close button:hover { color: #e2e4e9; background: rgba(255,255,255,0.06); }
+.detail-section { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.detail-header-name { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.detail-header-sub { font-size: 13px; color: #8b8f98; }
+.detail-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+.detail-score-big { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.detail-rank { font-size: 12px; color: #8b8f98; margin-left: 8px; }
+.detail-signal-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 13px; }
+.detail-signal-bar-bg { width: 60px; height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; flex-shrink: 0; }
+.detail-signal-bar-fill { height: 100%; border-radius: 3px; }
+.detail-signal-label { flex: 1; color: #8b8f98; }
+.detail-signal-value { font-weight: 600; color: #e2e4e9; min-width: 32px; text-align: right; }
+.detail-signal-year { font-size: 10px; color: #555; margin-left: 4px; }
+.detail-kv { display: flex; justify-content: space-between; margin: 4px 0; font-size: 13px; }
+.detail-kv-label { color: #8b8f98; }
+.detail-kv-value { color: #e2e4e9; font-weight: 500; }
+.detail-warning { font-size: 11px; color: #e8913a; margin-top: 4px; padding: 6px 8px; background: rgba(232,145,58,0.06); border-radius: 4px; }
+.detail-missing { font-size: 11px; color: #555; font-style: italic; }
+
+/* --- Methodology Drawer --- */
+#methodo-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 500; display: none; }
+#methodo-overlay.open { display: block; }
+#methodo-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 520px; background: #111318; border-left: 1px solid rgba(255,255,255,0.06); z-index: 501; overflow-y: auto; transform: translateX(100%); transition: transform 0.2s ease; padding: 24px; }
+#methodo-drawer.open { transform: translateX(0); }
+#methodo-drawer h2 { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 16px; }
+#methodo-drawer h3 { font-size: 14px; font-weight: 600; color: #e2e4e9; margin: 16px 0 8px; }
+#methodo-drawer p, #methodo-drawer li { font-size: 13px; color: #8b8f98; line-height: 1.6; margin: 4px 0; }
+#methodo-drawer table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+#methodo-drawer th, #methodo-drawer td { padding: 5px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06); }
+#methodo-drawer th { color: #555; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px; }
+#methodo-drawer td { color: #8b8f98; }
+#methodo-drawer code { background: rgba(255,255,255,0.06); padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+.methodo-close { position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center; background: #111318; padding-bottom: 12px; margin: -24px -24px 0; padding: 16px 24px 12px; z-index: 1; }
+.methodo-close button { background: none; border: none; color: #555; font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+.methodo-close button:hover { color: #e2e4e9; background: rgba(255,255,255,0.06); }
+.freshness-green { color: #4ecdc4; }
+.freshness-yellow { color: #f39c12; }
+.freshness-orange { color: #e8913a; }
+
+/* --- Coverage banner --- */
+.coverage-banner { padding: 8px 12px; background: rgba(74,144,217,0.06); border-radius: 4px; font-size: 12px; color: #8b8f98; margin-bottom: 8px; border-left: 3px solid #4a90d9; }
+
+/* --- Loading --- */
+#loading { position: fixed; inset: 0; z-index: 2000; background: #0a0b10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
+#loading .spinner { width: 32px; height: 32px; border: 3px solid rgba(255,255,255,0.08); border-top-color: #4ecdc4; border-radius: 50%; animation: spin 0.8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-
-#filter-bar {
-  position: absolute; top: 110px; left: 50%; transform: translateX(-50%);
-  z-index: 1000; display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
-  max-width: 90vw;
-}
-.filter-btn {
-  padding: 6px 14px; border-radius: 20px; border: 1.5px solid rgba(255,255,255,0.12);
-  background: rgba(15,15,30,0.7); backdrop-filter: blur(8px);
-  cursor: pointer; font-size: 12px; font-weight: 500;
-  transition: all 0.2s; color: #ccc;
-}
-.filter-btn:hover { border-color: rgba(255,255,255,0.3); color: #fff; }
-.filter-btn.active {
-  border-color: #4a90d9; background: #4a90d9; color: white;
-  box-shadow: 0 2px 12px rgba(74,144,217,0.3);
-}
-
-#mode-tabs {
-  display: inline-flex; justify-content: center; gap: 0;
-  margin-top: 10px; position: relative;
-  background: rgba(255,255,255,0.06); border-radius: 8px;
-  padding: 2px;
-}
-.mode-btn {
-  padding: 8px 24px; border: none; cursor: pointer;
-  font-size: 14px; font-weight: 600; border-radius: 6px;
-  background: transparent; color: rgba(255,255,255,0.5);
-  transition: color 0.2s, background 0.2s;
-}
-.mode-btn:hover { color: rgba(255,255,255,0.85); }
-.mode-btn.active {
-  color: #fff;
-  background: rgba(255,255,255,0.1);
-}
-#mode-indicator {
-  position: absolute; bottom: 0; height: 2px;
-  background: #4a90d9; border-radius: 1px;
-  transition: left 0.3s ease, width 0.3s ease, background 0.3s ease;
-}
-
-#stats-panel {
-  position: absolute; top: 10px; right: 10px; z-index: 1000;
-  padding: 18px;
-  font-size: 14px; width: 380px; max-height: calc(100vh - 30px);
-  overflow-y: auto; display: none;
-}
-#stats-panel h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; color: #e0e0e0; }
-#stats-panel table {
-  width: 100%; border-collapse: collapse; font-size: 13px;
-}
-#stats-panel th, #stats-panel td {
-  padding: 6px 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.06);
-}
-#stats-panel th { font-weight: 600; color: #999; font-size: 12px; }
-#stats-panel tr.clickable { cursor: pointer; }
-#stats-panel tr.clickable:hover { background: rgba(255,255,255,0.04); }
-#stats-panel .stats-note {
-  margin-top: 12px; font-size: 12px; color: #888; line-height: 1.5;
-}
-#stats-panel .stats-summary {
-  margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.04);
-  border-radius: 6px; font-size: 13px; line-height: 1.5;
-}
-
-#surv-filters {
-  position: absolute; top: 110px; left: 50%; transform: translateX(-50%);
-  z-index: 1000; display: none; padding: 12px 20px;
-  font-size: 13px; gap: 12px; align-items: center;
-  flex-wrap: wrap; justify-content: center;
-  color: #ccc;
-}
-#surv-filters label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-#surv-filters input[type="range"] { width: 100px; }
-#surv-filters .slider-value { min-width: 30px; font-weight: 600; }
-
-/* --- Data freshness year indicators --- */
-.data-year { font-size: 11px; color: #777; font-style: italic; margin-left: 4px; }
-
-input[type="checkbox"] {
-  accent-color: #4ecdc4;
-}
-
-/* --- Panel & tooltip transition animations --- */
-.panel-enter {
-  animation: panelSlideIn 0.25s ease-out both;
-}
-.panel-exit {
-  animation: panelSlideOut 0.2s ease-in both;
-}
-@keyframes panelSlideIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes panelSlideOut {
-  from { opacity: 1; transform: translateY(0); }
-  to { opacity: 0; transform: translateY(8px); }
-}
-
-#info.tooltip-enter {
-  animation: tooltipIn 0.15s ease-out both;
-}
-@keyframes tooltipIn {
-  from { opacity: 0; transform: scale(0.95); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-.cascade-in {
-  opacity: 0;
-  transform: translateY(-12px);
-}
-.cascade-in.visible {
-  animation: cascadeSlideIn 0.4s ease-out both;
-}
-@keyframes cascadeSlideIn {
-  from { opacity: 0; transform: translateY(-12px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* --- Search bar --- */
-#search-box {
-  position: absolute; top: 12px; left: 12px; z-index: 1001;
-  width: 280px;
-}
-#search-input {
-  width: 100%; padding: 10px 14px 10px 36px;
-  background: rgba(15,15,30,0.82); backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
-  color: #e0e0e0; font-size: 14px; outline: none;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  transition: border-color 0.2s;
-}
-#search-input::placeholder { color: #666; }
-#search-input:focus { border-color: rgba(255,255,255,0.25); }
-#search-icon {
-  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-  color: #666; font-size: 14px; pointer-events: none;
-}
-#search-results {
-  position: absolute; top: 100%; left: 0; right: 0;
-  margin-top: 4px; max-height: 320px; overflow-y: auto;
-  background: rgba(15,15,30,0.95); backdrop-filter: blur(16px);
-  border: 1px solid rgba(255,255,255,0.08); border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-  display: none;
-}
-.search-item {
-  padding: 8px 14px; cursor: pointer; font-size: 13px;
-  color: #ccc; display: flex; justify-content: space-between; align-items: center;
-}
-.search-item:hover, .search-item.active { background: rgba(255,255,255,0.06); color: #fff; }
-.search-item:first-child { border-radius: 10px 10px 0 0; }
-.search-item:last-child { border-radius: 0 0 10px 10px; }
-.search-item-code { font-size: 11px; color: #666; }
-.search-item-swatch {
-  display: inline-block; width: 8px; height: 8px; border-radius: 2px;
-  margin-right: 6px; vertical-align: middle;
-}
+#load-text { font-size: 14px; color: #8b8f98; }
+#load-status { font-size: 12px; color: #555; }
 
 /* --- Responsive --- */
 @media (max-width: 768px) {
-  #stats-panel {
-    top: auto; bottom: 0; right: 0; left: 0; width: 100%;
-    max-height: 40vh; border-radius: 10px 10px 0 0;
-  }
-  #stats-tab { top: auto; bottom: 0; right: 0; border-radius: 10px 10px 0 0; }
-  #title-bar { padding: 12px 16px 10px; }
-  #title-bar h1 { font-size: 18px; }
-  #title-bar p { font-size: 12px; }
-  .mode-btn { padding: 6px 14px; font-size: 12px; }
-  #search-box { width: 220px; top: 8px; left: 8px; }
-  #filter-bar, #surv-filters { top: 90px; }
-  #filter-bar { max-width: 95vw; overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
-  #surv-filters { flex-direction: column; align-items: flex-start; }
-  #legend { max-width: 200px; font-size: 12px; }
-}
-
-#stats-panel::-webkit-scrollbar { width: 6px; }
-#stats-panel::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
-#stats-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
-#stats-panel::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
-
-#stats-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px;
-}
-#stats-header h3 { margin-bottom: 0; }
-#stats-collapse {
-  background: none; border: none; color: #999; font-size: 20px;
-  cursor: pointer; padding: 2px 6px; border-radius: 4px;
-  transition: all 0.2s;
-}
-#stats-collapse:hover { color: #fff; background: rgba(255,255,255,0.08); }
-
-#stats-tab {
-  position: absolute; top: 10px; right: 0; z-index: 1000;
-  background: rgba(15,15,30,0.82); backdrop-filter: blur(16px);
-  border-radius: 10px 0 0 10px; padding: 10px 12px;
-  cursor: pointer; color: #e0e0e0; font-size: 14px;
-  box-shadow: -4px 0 16px rgba(0,0,0,0.3);
-  border: 1px solid rgba(255,255,255,0.08); border-right: none;
-  transition: all 0.2s;
-}
-#stats-tab:hover { background: rgba(25,25,50,0.9); }
-#stats-tab-badge {
-  display: inline-block; background: #4ecdc4; color: #000;
-  font-size: 10px; font-weight: 700; padding: 1px 6px;
-  border-radius: 10px; margin-left: 6px;
-}
-
-#stats-scroll-fade {
-  position: sticky; bottom: 0; left: 0; right: 0; height: 24px;
-  background: linear-gradient(transparent, rgba(15,15,30,0.82));
-  pointer-events: none; margin-top: -24px;
-}
-
-input[type="range"] {
-  -webkit-appearance: none; appearance: none;
-  height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; outline: none;
-}
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none; appearance: none;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #4ecdc4; cursor: pointer;
-  box-shadow: 0 0 6px rgba(78,205,196,0.4);
-}
-input[type="range"]::-moz-range-thumb {
-  width: 14px; height: 14px; border-radius: 50%; border: none;
-  background: #4ecdc4; cursor: pointer;
-  box-shadow: 0 0 6px rgba(78,205,196,0.4);
+  #app { grid-template-columns: 1fr; }
+  #cmd-panel { grid-row: 3; grid-column: 1; max-height: 45vh; border-right: none; border-top: 1px solid rgba(255,255,255,0.06); }
+  #map { grid-row: 2; grid-column: 1; }
+  #bottom-bar { display: none; }
+  #detail-panel { width: 100%; }
+  #methodo-drawer { width: 100%; }
+  #search-box { width: 180px; }
+  .mode-btn { padding: 5px 12px; font-size: 12px; }
 }
 </style>
 </head>
@@ -316,105 +169,54 @@ input[type="range"]::-moz-range-thumb {
 
 <div id="loading">
   <div class="spinner"></div>
-  <div>Chargement des 35 000 communes...</div>
-  <div id="load-status" style="font-size:12px;color:#888;margin-top:8px;"></div>
+  <div id="load-text">Chargement des 35 000 communes...</div>
+  <div id="load-status"></div>
 </div>
 
-<div id="title-bar">
-  <h1>Carte politique des maires de France</h1>
-  <p id="subtitle">Nuance politique du maire — Municipales 2020</p>
-  <div id="mode-tabs">
-    <button class="mode-btn active" data-mode="politique">Politique</button>
-    <button class="mode-btn" data-mode="surveillance">Surveillance</button>
-    <button class="mode-btn" data-mode="prospection">Prospection</button>
-    <div id="mode-indicator"></div>
+<div id="app">
+  <div id="top-bar">
+    <div id="search-box">
+      <span id="search-icon">&#x1F50D;</span>
+      <input type="text" id="search-input" placeholder="Rechercher une commune..." autocomplete="off">
+      <div id="search-results"></div>
+    </div>
+    <div id="mode-tabs">
+      <button class="mode-btn active" data-mode="prospection">Prospection</button>
+      <button class="mode-btn" data-mode="politique">Politique</button>
+      <button class="mode-btn" data-mode="surveillance">Surveillance</button>
+      <div id="mode-indicator"></div>
+    </div>
+    <button id="btn-methodo" title="Methodologie et sources">?</button>
   </div>
-</div>
 
-<div id="filter-bar"></div>
+  <div id="cmd-panel">
+    <div id="cmd-content"></div>
+  </div>
 
-<div id="surv-filters">
-  <label>
-    Seuil ratio :
-    <input type="range" id="ratio-slider" min="0" max="50" value="0" step="1">
-    <span class="slider-value" id="ratio-value">0</span> /10k hab
-  </label>
-  <label>
-    <input type="checkbox" id="data-only">
-    Avec donnees uniquement
-  </label>
-</div>
-
-<div id="search-box">
-  <span id="search-icon">&#128269;</span>
-  <input type="text" id="search-input" placeholder="Rechercher une commune..." autocomplete="off">
-  <div id="search-results"></div>
-</div>
-
-<div id="map"></div>
-
-<div id="legend">
-  <h3>Famille politique</h3>
-  <div id="legend-items"></div>
-  <div id="legend-surv" style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
-    <h3 style="font-size:13px; margin-bottom:8px; color:#ccc;">Surveillance</h3>
-
-    <div style="display:flex; align-items:center; margin:6px 0;">
-      <svg width="80" height="16" style="margin-right:8px;">
-        <line x1="2" y1="8" x2="18" y2="8" stroke="#aaa" stroke-width="0.5"/>
-        <line x1="22" y1="8" x2="38" y2="8" stroke="#aaa" stroke-width="1.5"/>
-        <line x1="42" y1="8" x2="58" y2="8" stroke="#aaa" stroke-width="3"/>
-        <line x1="62" y1="8" x2="78" y2="8" stroke="#aaa" stroke-width="4"/>
-      </svg>
-      <span class="legend-label">Effectif police mun.</span>
+  <div id="map">
+    <div id="detail-panel">
+      <div id="detail-close"><button title="Fermer">&times;</button></div>
+      <div id="detail-content"></div>
     </div>
+  </div>
 
-    <div style="display:flex; align-items:center; margin:6px 0;">
-      <div style="width:16px; height:16px; border:2px dashed #444; border-radius:3px; background:#2a2a3e; margin-right:8px;"></div>
-      <span class="legend-label">Pas de donnees</span>
-    </div>
-    <div style="display:flex; align-items:center; margin:6px 0;">
-      <div style="width:16px; height:16px; border:1px solid #333; border-radius:3px; background:#1a1a2e; margin-right:8px;"></div>
-      <span class="legend-label">Donnees = 0 agents</span>
-    </div>
-
-    <div style="margin-top:8px; font-size:10px; color:#777; line-height:1.4;">
-      Police mun. : donnees 2024 | Pop. INSEE 2021<br>
-      Ratio plafonne a 50/10k hab.
-    </div>
+  <div id="bottom-bar">
+    <span id="bottom-stats"></span>
   </div>
 </div>
 
 <div id="info">
-  <h3 id="info-name"></h3>
-  <div class="detail" id="info-maire-row"><strong>Maire :</strong> <span id="info-maire"></span></div>
-  <div class="detail"><strong>Nuance :</strong> <span id="info-nuance"></span></div>
-  <div class="detail"><strong>Famille :</strong> <span id="info-famille"></span></div>
-  <div class="detail" id="info-surv-row" style="display:none; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
-    <div><strong>Police mun. :</strong> <span id="info-pm"></span></div>
-    <div><strong>ASVP :</strong> <span id="info-asvp"></span></div>
-    <div><strong>Population :</strong> <span id="info-pop"></span></div>
-    <div><strong>Ratio /10k :</strong> <span id="info-ratio"></span></div>
-  </div>
-  <div class="detail" id="info-prosp-row" style="display:none; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
-  </div>
+  <div id="info-name"></div>
+  <div id="info-metric"></div>
 </div>
 
-<div id="stats-panel">
-  <div id="stats-header">
-    <h3>Surveillance par famille politique</h3>
-    <button id="stats-collapse" title="Replier">&rsaquo;</button>
+<div id="methodo-overlay"></div>
+<div id="methodo-drawer">
+  <div class="methodo-close">
+    <h2>Methodologie et sources</h2>
+    <button title="Fermer">&times;</button>
   </div>
-  <div id="stats-body">
-    <div id="stats-table"></div>
-    <div id="stats-summary" class="stats-summary"></div>
-    <div class="stats-note" id="stats-note"></div>
-  </div>
-  <div id="stats-scroll-fade"></div>
-</div>
-<div id="stats-tab" style="display:none;">
-  <span id="stats-tab-icon">&#9776;</span>
-  <span id="stats-tab-badge"></span>
+  <div id="methodo-content"></div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -453,14 +255,14 @@ input[type="range"]::-moz-range-thumb {
   // Convert TopoJSON to GeoJSON
   var communesGeo = topojson.feature(topoData, topoData.objects.a_com2022);
 
-  // Familles in display order (not sorted by count — intentional ordering)
+  // Familles in display order
   var FAMILLES = [
     { key: 'Gauche',                     color: '#E2001A', label: 'Gauche' },
     { key: 'Centre',                     color: '#FFB300', label: 'Centre' },
     { key: 'Droite',                     color: '#0056A6', label: 'Droite' },
-    { key: 'Extrême droite',             color: '#0D1B4A', label: 'Extreme droite' },
+    { key: 'Extr\u00eame droite',        color: '#0D1B4A', label: 'Extreme droite' },
     { key: 'Courants politiques divers', color: '#9E9E9E', label: 'Divers' },
-    { key: 'Non classé',                 color: '#CCCCCC', label: 'Non classe' }
+    { key: 'Non class\u00e9',            color: '#CCCCCC', label: 'Non classe' }
   ];
 
   // Count communes per famille
@@ -473,40 +275,9 @@ input[type="range"]::-moz-range-thumb {
     }
   }
 
-  // Build legend
-  var legendEl = document.getElementById('legend-items');
-  FAMILLES.forEach(function(f) {
-    var item = document.createElement('div');
-    item.className = 'legend-item';
-
-    var swatch = document.createElement('div');
-    swatch.className = 'legend-swatch';
-    swatch.style.background = f.color;
-    if (f.key === 'Non classé') swatch.style.opacity = '0.4';
-
-    var label = document.createElement('span');
-    label.className = 'legend-label';
-    label.textContent = f.label;
-
-    var countEl = document.createElement('span');
-    countEl.className = 'legend-count';
-    countEl.textContent = (familleCounts[f.key] || 0).toLocaleString('fr');
-
-    item.appendChild(swatch);
-    item.appendChild(label);
-    item.appendChild(countEl);
-
-    item.addEventListener('click', (function(famille) {
-      return function() { activeFilter = famille; updateFilter(); };
-    })(f.key));
-
-    legendEl.appendChild(item);
-  });
-
-  // Build filter buttons
-  var filterBar = document.getElementById('filter-bar');
+  // --- State ---
   var activeFilter = null;
-  var currentMode = 'politique';
+  var currentMode = 'prospection';
 
   var SURV_COLORS = [
     { threshold: 0,  color: '#FFFFB2' },
@@ -527,29 +298,13 @@ input[type="range"]::-moz-range-thumb {
 
   var survFilters = { ratioMin: 0, dataOnly: false };
 
-  var allBtn = document.createElement('button');
-  allBtn.className = 'filter-btn active';
-  allBtn.textContent = 'Tous';
-  allBtn.addEventListener('click', function() { activeFilter = null; updateFilter(); });
-  filterBar.appendChild(allBtn);
-
-  FAMILLES.forEach(function(f) {
-    var btn = document.createElement('button');
-    btn.className = 'filter-btn';
-    btn.textContent = f.label;
-    btn.setAttribute('data-famille', f.key);
-    btn.style.borderColor = f.color;
-    btn.addEventListener('click', function() { activeFilter = f.key; updateFilter(); });
-    filterBar.appendChild(btn);
-  });
-
-  // Style function — political mode
+  // Style function -- political mode
   function getStylePolitique(feature) {
     var code = feature.properties.codgeo;
     var m = maires[code];
     if (!m) return { fillColor: '#444', fillOpacity: 0.15, weight: 0.2, color: '#222', opacity: 0.5 };
 
-    var isNC = m.f === 'Non classé';
+    var isNC = m.f === 'Non class\u00e9';
     var isFiltered = activeFilter && m.f !== activeFilter;
 
     if (isFiltered) {
@@ -584,7 +339,7 @@ input[type="range"]::-moz-range-thumb {
     };
   }
 
-  // Style function — surveillance mode
+  // Style function -- surveillance mode
   function getStyleSurveillance(feature) {
     var code = feature.properties.codgeo;
     var s = surv[code];
@@ -592,7 +347,6 @@ input[type="range"]::-moz-range-thumb {
 
     if (!s) {
       if (survFilters.dataOnly) return { fillOpacity: 0, weight: 0, opacity: 0 };
-      // No data: diagonal hatch pattern via low opacity + dashed border
       return { fillColor: '#2a2a3e', fillOpacity: 0.25, weight: 0.4, color: '#444', opacity: 0.5, dashArray: '2 4' };
     }
 
@@ -603,7 +357,6 @@ input[type="range"]::-moz-range-thumb {
     if (activeFilter && m && m.f !== activeFilter)
       return { fillColor: '#333', fillOpacity: 0.15, weight: 0.2, color: '#111', opacity: 0.3 };
 
-    // Data present but zero agents: distinct from heatmap
     if (ratio === 0) {
       return { fillColor: '#1a1a2e', fillOpacity: 0.5, weight: 0.3, color: '#333', opacity: 0.4 };
     }
@@ -649,7 +402,7 @@ input[type="range"]::-moz-range-thumb {
         'Transformation : courbe gaussienne en log centree sur 30 000 habitants (sigma = 1.2). ' +
         'Formule : exp(-0.5 * ((ln(pop) - ln(30000)) / 1.2)^2). ' +
         'Le signal vaut ~1 pour 30k hab., ~0.7 pour 10k ou 90k, et tend vers 0 pour les tres petites ou tres grandes communes. ' +
-        'Logique : les communes entre 5k et 100k sont la cible ideale — assez grandes pour avoir des besoins, pas trop pour etre deja equipees.' }
+        'Logique : les communes entre 5k et 100k sont la cible ideale -- assez grandes pour avoir des besoins, pas trop pour etre deja equipees.' }
   ];
 
   var prospWeights = {};
@@ -657,18 +410,17 @@ input[type="range"]::-moz-range-thumb {
 
   var prospFilters = { statPayantOnly: false, noVideoverb: false, popMin: 0 };
 
-  // Score cache — invalidated when weights change
+  // Score cache -- invalidated when weights change
   var prospScoreCache = null;
   function invalidateProspCache() { prospScoreCache = null; }
 
-  // Debounced map+stats refresh for sliders
+  // Debounced map refresh for sliders
   var prospUpdateTimer = null;
   function scheduleProspRefresh() {
     invalidateProspCache();
     if (prospUpdateTimer) clearTimeout(prospUpdateTimer);
     prospUpdateTimer = setTimeout(function() {
       geoLayer.setStyle(getStyle);
-      updateProspSummary();
     }, 50);
   }
 
@@ -684,7 +436,7 @@ input[type="range"]::-moz-range-thumb {
     signals.stat_payant = p.stat_payant ? 1 : 0;
     var pmCount = (p.pm || 0) + (p.asvp || 0);
     signals.pm_count = pop > 0 ? Math.min(pmCount / pop * 10000 / 50, 1) : 0;
-    // PM growth weighted by volume: growth_rate * sqrt(current_agents) / 5
+    // PM growth weighted by volume
     if (p.pm_trend && p.pm_trend.length >= 2) {
       var first = p.pm_trend[0];
       var last = p.pm_trend[p.pm_trend.length - 1];
@@ -756,7 +508,7 @@ input[type="range"]::-moz-range-thumb {
     { threshold: 80, color: '#e74c3c' }
   ];
 
-  // Style function — prospection mode
+  // Style function -- prospection mode
   function getStyleProspection(feature) {
     var code = feature.properties.codgeo;
     var p = prosp[code];
@@ -784,8 +536,11 @@ input[type="range"]::-moz-range-thumb {
     return getStylePolitique(feature);
   }
 
-  // Info panel
+  // --- Info tooltip (minimal) ---
   var infoPanel = document.getElementById('info');
+  var infoName = document.getElementById('info-name');
+  var infoMetric = document.getElementById('info-metric');
+
   function positionInfo(evt) {
     var x = evt.clientX + 15;
     var y = evt.clientY + 15;
@@ -801,110 +556,39 @@ input[type="range"]::-moz-range-thumb {
     var code = feature.properties.codgeo;
     var m = maires[code];
     if (!m) return;
-    document.getElementById('info-name').textContent = m.n + ' (' + code + ')';
-    document.getElementById('info-maire').textContent = m.m || '\u2014';
-    document.getElementById('info-nuance').textContent = m.lb + ' (' + m.nu + ')';
-    document.getElementById('info-famille').textContent = m.f;
-    infoPanel.style.display = 'block';
 
-    var s = surv[code];
-    var survRow = document.getElementById('info-surv-row');
-    var prospRow = document.getElementById('info-prosp-row');
+    infoName.textContent = m.n + ' (' + code + ')';
 
+    // Key metric based on mode
     if (currentMode === 'prospection') {
-      survRow.style.display = 'none';
-      var p = prosp[code];
-      prospRow.style.display = 'block';
-      prospRow.textContent = '';
-
-      var result = computeProspScore(code, true);
-      var lines = [];
-      if (result !== null) {
-        lines.push(['Score', result.score + '/100', '']);
-      } else {
-        lines.push(['Score', 'N/A', '']);
-      }
-      if (p) {
-        if (p.pop) lines.push(['Population', p.pop.toLocaleString('fr') + ' hab.', p.pop_year || '']);
-        var pmTotal = (p.pm || 0) + (p.asvp || 0);
-        if (pmTotal > 0) lines.push(['Police mun.', pmTotal + ' agents', '2024']);
-        if (p.pm_trend && p.pm_trend.length >= 2) {
-          var first = p.pm_trend[0], last = p.pm_trend[p.pm_trend.length - 1];
-          var pct = first > 0 ? Math.round((last - first) / first * 100) : (last > 0 ? 100 : 0);
-          var sign = pct >= 0 ? '+' : '';
-          var yRange = p.pm_trend_years[0] + '-' + p.pm_trend_years[p.pm_trend_years.length - 1];
-          lines.push(['Evol. PM', sign + pct + '%', yRange]);
-        }
-        lines.push(['Stat. payant', p.stat_payant ? 'Oui' : 'Non', p.stat_payant_year || '2019']);
-        lines.push(['Videoverb.', p.videoverb ? 'Oui' : 'Non', p.videoverb_year || '2025']);
-        if (p.accidents) lines.push(['Accidents', p.accidents + ' (3 ans)', p.accidents_years || '2023-2024']);
-      }
-
-      lines.forEach(function(line) {
-        var div = document.createElement('div');
-        var strong = document.createElement('strong');
-        strong.textContent = line[0] + ' : ';
-        div.appendChild(strong);
-        div.appendChild(document.createTextNode(line[1]));
-        if (line[2]) {
-          var yr = document.createElement('span');
-          yr.className = 'data-year';
-          yr.textContent = '(' + line[2] + ')';
-          div.appendChild(yr);
-        }
-        prospRow.appendChild(div);
-      });
-
-      // Score decomposition
-      if (result && result.detail) {
-        var decompDiv = document.createElement('div');
-        decompDiv.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.08);font-size:10px;';
-        var decompTitle = document.createElement('div');
-        decompTitle.style.cssText = 'font-weight:700;color:#888;margin-bottom:3px;';
-        decompTitle.textContent = 'Decomposition du score :';
-        decompDiv.appendChild(decompTitle);
-
-        result.detail.forEach(function(d) {
-          if (d.weight === 0) return;
-          var row = document.createElement('div');
-          row.style.cssText = 'display:flex;align-items:center;gap:4px;margin:2px 0;';
-
-          var barBg = document.createElement('div');
-          barBg.style.cssText = 'width:40px;height:6px;background:rgba(255,255,255,0.1);border-radius:3px;overflow:hidden;flex-shrink:0;';
-          var barFill = document.createElement('div');
-          var pct = Math.round(d.raw * 100);
-          barFill.style.cssText = 'height:100%;border-radius:3px;background:' + (pct > 60 ? '#2ecc71' : pct > 30 ? '#f39c12' : '#e74c3c') + ';width:' + pct + '%;';
-          barBg.appendChild(barFill);
-
-          var labelEl = document.createElement('span');
-          labelEl.style.cssText = 'color:#aaa;flex:1;';
-          labelEl.textContent = d.label;
-
-          var contribEl = document.createElement('span');
-          contribEl.style.cssText = 'font-weight:600;color:#ccc;min-width:20px;text-align:right;';
-          contribEl.textContent = '+' + d.contrib;
-
-          row.appendChild(barBg);
-          row.appendChild(labelEl);
-          row.appendChild(contribEl);
-          decompDiv.appendChild(row);
-        });
-
-        prospRow.appendChild(decompDiv);
-      }
+      var score = computeProspScore(code);
+      infoMetric.textContent = score !== null ? 'Score : ' + score + '/100' : 'Score : N/A';
+    } else if (currentMode === 'politique') {
+      infoMetric.textContent = m.f + ' \u2014 ' + m.lb + ' (' + m.nu + ')';
     } else {
-      prospRow.style.display = 'none';
-      if (s) {
-        survRow.style.display = 'block';
-        document.getElementById('info-pm').textContent = (s.pm || 0) + ' agents';
-        document.getElementById('info-asvp').textContent = (s.asvp || 0) + ' agents';
-        document.getElementById('info-pop').textContent = s.pop ? s.pop.toLocaleString('fr') + ' hab.' : 'N/A';
-        document.getElementById('info-ratio').textContent = s.r ? s.r + ' agents/10k hab' + (s.r_raw ? ' (brut: ' + s.r_raw + ')' : '') : 'N/A';
+      var s = surv[code];
+      if (s && s.r) {
+        infoMetric.textContent = s.r + ' /10k hab';
+      } else if (s) {
+        infoMetric.textContent = '0 agents';
       } else {
-        survRow.style.display = 'none';
+        infoMetric.textContent = 'Pas de donnees';
       }
     }
+
+    infoPanel.style.display = 'block';
   }
+
+  // --- Detail panel placeholder ---
+  function openDetail(code) {
+    console.log('openDetail:', code);
+    // Will be implemented in Task 6
+  }
+
+  // --- Detail panel close ---
+  document.querySelector('#detail-close button').addEventListener('click', function() {
+    document.getElementById('detail-panel').classList.remove('open');
+  });
 
   // Create GeoJSON layer
   var geoLayer = L.geoJSON(communesGeo, {
@@ -913,9 +597,6 @@ input[type="range"]::-moz-range-thumb {
       layer.on({
         mouseover: function(e) {
           showInfo(feature);
-          infoPanel.classList.remove('tooltip-enter');
-          void infoPanel.offsetWidth; // force reflow
-          infoPanel.classList.add('tooltip-enter');
           positionInfo(e.originalEvent);
           e.target.setStyle({ weight: 2, color: '#fff', opacity: 1 });
           e.target.bringToFront();
@@ -924,12 +605,13 @@ input[type="range"]::-moz-range-thumb {
           positionInfo(e.originalEvent);
         },
         mouseout: function(e) {
-          infoPanel.classList.remove('tooltip-enter');
           infoPanel.style.display = 'none';
           geoLayer.resetStyle(e.target);
         },
         click: function(e) {
+          var code = feature.properties.codgeo;
           map.fitBounds(e.target.getBounds());
+          openDetail(code);
         }
       });
     }
@@ -937,30 +619,12 @@ input[type="range"]::-moz-range-thumb {
 
   // Filter update function
   function updateFilter() {
-    var buttons = document.querySelectorAll('.filter-btn');
-    for (var i = 0; i < buttons.length; i++) {
-      var btn = buttons[i];
-      var isActive = (!activeFilter && btn.textContent === 'Tous') ||
-                     (activeFilter && btn.getAttribute('data-famille') === activeFilter);
-      if (isActive) {
-        btn.classList.add('active');
-      } else {
-        btn.classList.remove('active');
-      }
-    }
     geoLayer.setStyle(getStyle);
   }
 
-  // Mode toggle
-  var modeButtons = document.querySelectorAll('.mode-btn');
-  for (var i = 0; i < modeButtons.length; i++) {
-    modeButtons[i].addEventListener('click', (function(btn) {
-      return function() { switchMode(btn.getAttribute('data-mode')); };
-    })(modeButtons[i]));
-  }
-
-  var modeIndicator = document.getElementById('mode-indicator');
+  // --- Mode toggle ---
   var MODE_COLORS = { politique: '#4a90d9', surveillance: '#e8913a', prospection: '#4ecdc4' };
+  var modeIndicator = document.getElementById('mode-indicator');
 
   function updateModeIndicator() {
     var activeBtn = document.querySelector('.mode-btn.active');
@@ -968,43 +632,6 @@ input[type="range"]::-moz-range-thumb {
     modeIndicator.style.left = activeBtn.offsetLeft + 'px';
     modeIndicator.style.width = activeBtn.offsetWidth + 'px';
     modeIndicator.style.background = MODE_COLORS[activeBtn.getAttribute('data-mode')] || '#4a90d9';
-  }
-  updateModeIndicator();
-
-  var statsPanel = document.getElementById('stats-panel');
-  var statsTab = document.getElementById('stats-tab');
-  var statsCollapse = document.getElementById('stats-collapse');
-  var statsBadge = document.getElementById('stats-tab-badge');
-  var statsPanelCollapsed = false;
-
-  statsCollapse.addEventListener('click', function() {
-    statsPanelCollapsed = true;
-    statsPanel.style.display = 'none';
-    statsTab.style.display = 'block';
-  });
-
-  statsTab.addEventListener('click', function() {
-    statsPanelCollapsed = false;
-    statsTab.style.display = 'none';
-    statsPanel.style.display = 'block';
-  });
-
-  function animatePanel(el, show) {
-    if (show) {
-      el.style.display = el.id === 'filter-bar' ? 'flex' : 'block';
-      el.classList.remove('panel-exit');
-      el.classList.add('panel-enter');
-    } else if (el.style.display !== 'none' && el.style.display !== '') {
-      el.classList.remove('panel-enter');
-      el.classList.add('panel-exit');
-      el.addEventListener('animationend', function handler() {
-        el.style.display = 'none';
-        el.classList.remove('panel-exit');
-        el.removeEventListener('animationend', handler);
-      });
-    } else {
-      el.style.display = 'none';
-    }
   }
 
   function switchMode(mode) {
@@ -1014,551 +641,45 @@ input[type="range"]::-moz-range-thumb {
       btns[i].classList.toggle('active', btns[i].getAttribute('data-mode') === mode);
     }
 
-    animatePanel(document.getElementById('filter-bar'), mode === 'politique');
-    animatePanel(document.getElementById('surv-filters'), mode === 'surveillance');
-    var showStats = (mode === 'surveillance' || mode === 'prospection');
-    if (showStats && statsPanelCollapsed) {
-      statsPanel.style.display = 'none';
-      statsTab.style.display = 'block';
-    } else if (showStats) {
-      statsPanel.style.display = 'block';
-      statsTab.style.display = 'none';
-    } else {
-      statsPanel.style.display = 'none';
-      statsTab.style.display = 'none';
-    }
-    document.getElementById('info').style.display = 'none';
-    document.body.classList.toggle('surv-mode', mode === 'surveillance');
-    document.body.classList.toggle('prosp-mode', mode === 'prospection');
+    // Clear cmd-content (render functions will be added in Tasks 4-5)
+    document.getElementById('cmd-content').textContent = '';
 
-    var subtitles = {
-      politique: 'Nuance politique du maire \u2014 Municipales 2020',
-      surveillance: 'Effectifs police municipale par commune',
-      prospection: 'Score de potentiel pour la videoverbalisation — donnees croisees police, stationnement et equipements'
-    };
-    document.getElementById('subtitle').textContent = subtitles[mode];
+    // Hide info tooltip
+    infoPanel.style.display = 'none';
 
-    renderLegend(mode);
+    // Restyle map
     geoLayer.setStyle(getStyle);
-    if (mode === 'surveillance') renderStats();
-    if (mode === 'prospection') renderProspStats();
+
+    // Update mode indicator
     updateModeIndicator();
   }
 
-  function renderLegend(mode) {
-    var legendItemsEl = document.getElementById('legend-items');
-    var legendSurvEl = document.getElementById('legend-surv');
-    var legendTitle = document.querySelector('#legend h3');
+  var modeButtons = document.querySelectorAll('.mode-btn');
+  for (var i = 0; i < modeButtons.length; i++) {
+    modeButtons[i].addEventListener('click', (function(btn) {
+      return function() { switchMode(btn.getAttribute('data-mode')); };
+    })(modeButtons[i]));
+  }
 
-    if (mode === 'politique') {
-      legendItemsEl.textContent = '';
-      FAMILLES.forEach(function(f) {
-        var item = document.createElement('div');
-        item.className = 'legend-item';
+  // --- Methodology drawer open/close ---
+  var methodoOverlay = document.getElementById('methodo-overlay');
+  var methodoDrawer = document.getElementById('methodo-drawer');
+  var btnMethodo = document.getElementById('btn-methodo');
 
-        var swatch = document.createElement('div');
-        swatch.className = 'legend-swatch';
-        swatch.style.background = f.color;
-        if (f.key === 'Non class\u00e9') swatch.style.opacity = '0.4';
-
-        var label = document.createElement('span');
-        label.className = 'legend-label';
-        label.textContent = f.label;
-
-        var countEl = document.createElement('span');
-        countEl.className = 'legend-count';
-        countEl.textContent = (familleCounts[f.key] || 0).toLocaleString('fr');
-
-        item.appendChild(swatch);
-        item.appendChild(label);
-        item.appendChild(countEl);
-
-        item.addEventListener('click', (function(famille) {
-          return function() { activeFilter = famille; updateFilter(); };
-        })(f.key));
-
-        legendItemsEl.appendChild(item);
-      });
-
-      legendSurvEl.style.display = 'block';
-      legendTitle.textContent = 'Famille politique';
-      return;
+  function toggleMethodo() {
+    var isOpen = methodoDrawer.classList.contains('open');
+    if (isOpen) {
+      methodoDrawer.classList.remove('open');
+      methodoOverlay.classList.remove('open');
+    } else {
+      methodoDrawer.classList.add('open');
+      methodoOverlay.classList.add('open');
     }
-
-    if (mode === 'prospection') {
-      // Prospection mode legend
-      legendSurvEl.style.display = 'none';
-      legendTitle.textContent = 'Score prospection';
-      legendItemsEl.textContent = '';
-
-      var labels = ['< 20 (faible)', '20-40', '40-60', '60-80', '80+ (tres fort)'];
-      PROSP_COLORS.forEach(function(pc, idx) {
-        var item = document.createElement('div');
-        item.className = 'legend-item';
-        item.style.cursor = 'default';
-
-        var swatch = document.createElement('div');
-        swatch.className = 'legend-swatch';
-        swatch.style.background = pc.color;
-
-        var label = document.createElement('span');
-        label.className = 'legend-label';
-        label.textContent = labels[idx];
-
-        item.appendChild(swatch);
-        item.appendChild(label);
-        legendItemsEl.appendChild(item);
-      });
-
-      var greyItem = document.createElement('div');
-      greyItem.className = 'legend-item';
-      greyItem.style.cssText = 'margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.08);cursor:default;';
-      var greyBox = document.createElement('div');
-      greyBox.className = 'legend-swatch';
-      greyBox.style.background = '#555';
-      greyBox.style.opacity = '0.4';
-      var greyLabel = document.createElement('span');
-      greyLabel.className = 'legend-label';
-      greyLabel.textContent = 'Pas de donnees';
-      greyItem.appendChild(greyBox);
-      greyItem.appendChild(greyLabel);
-      legendItemsEl.appendChild(greyItem);
-
-      var noteDiv = document.createElement('div');
-      noteDiv.style.cssText = 'margin-top:8px;font-size:10px;color:#777;line-height:1.4;';
-      noteDiv.textContent = 'Score composite \u2014 ajustez les poids dans le panneau lateral';
-      legendItemsEl.appendChild(noteDiv);
-      return;
-    }
-
-    // Surveillance mode
-    legendSurvEl.style.display = 'none';
-    legendTitle.textContent = 'Intensite surveillance';
-    legendItemsEl.textContent = '';
-
-    SURV_COLORS.forEach(function(sc) {
-      var item = document.createElement('div');
-      item.className = 'legend-item';
-      item.style.cursor = 'default';
-
-      var swatch = document.createElement('div');
-      swatch.className = 'legend-swatch';
-      swatch.style.background = sc.color;
-
-      var label = document.createElement('span');
-      label.className = 'legend-label';
-      label.textContent = sc.threshold === 0 ? '< 5 agents/10k hab' :
-                           sc.threshold === 100 ? '100+ agents/10k hab' :
-                           sc.threshold + '+ agents/10k hab';
-
-      item.appendChild(swatch);
-      item.appendChild(label);
-      legendItemsEl.appendChild(item);
-    });
-
-    // "No data" legend item
-    var noDataItem = document.createElement('div');
-    noDataItem.className = 'legend-item';
-    noDataItem.style.cssText = 'margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.08);cursor:default;';
-    var noDataBox = document.createElement('div');
-    noDataBox.style.cssText = 'width:16px;height:16px;border:2px dashed #444;border-radius:3px;background:#2a2a3e;margin-right:8px;';
-    var noDataLabel = document.createElement('span');
-    noDataLabel.className = 'legend-label';
-    noDataLabel.textContent = 'Pas de donnees';
-    noDataItem.appendChild(noDataBox);
-    noDataItem.appendChild(noDataLabel);
-    legendItemsEl.appendChild(noDataItem);
-
-    var noteDiv = document.createElement('div');
-    noteDiv.style.cssText = 'margin-top:8px;font-size:10px;color:#999;line-height:1.4;';
-    noteDiv.textContent = 'Police mun. : donnees 2024 | Pop. : INSEE 2021 | Ratio plafonne a 50';
-    legendItemsEl.appendChild(noteDiv);
   }
 
-  // Surveillance filter controls
-  document.getElementById('ratio-slider').addEventListener('input', updateSurvFilters);
-  document.getElementById('data-only').addEventListener('change', updateSurvFilters);
-
-  function updateSurvFilters() {
-    survFilters.ratioMin = parseInt(document.getElementById('ratio-slider').value);
-    survFilters.dataOnly = document.getElementById('data-only').checked;
-    document.getElementById('ratio-value').textContent = survFilters.ratioMin;
-
-    geoLayer.setStyle(getStyle);
-    if (currentMode === 'surveillance') renderStats();
-  }
-
-  // Statistics
-  function computeStats() {
-    var stats = {};
-    FAMILLES.forEach(function(f) {
-      if (f.key === 'Non class\u00e9') return;
-      stats[f.key] = { label: f.label, color: f.color, count: 0, totalRatio: 0, ratioCount: 0 };
-    });
-
-    for (var code in surv) {
-      var s = surv[code];
-      var m = maires[code];
-      if (!m || m.f === 'Non class\u00e9' || !stats[m.f]) continue;
-      if (s.r !== undefined && s.r < survFilters.ratioMin) continue;
-      if (activeFilter && m.f !== activeFilter) continue;
-
-      var fam = stats[m.f];
-      fam.count++;
-      if (s.r !== undefined) { fam.totalRatio += s.r; fam.ratioCount++; }
-    }
-    return stats;
-  }
-
-  function renderStats() {
-    var stats = computeStats();
-    document.querySelector('#stats-panel h3').textContent = 'Surveillance par famille politique';
-    var tableEl = document.getElementById('stats-table');
-    var summaryEl = document.getElementById('stats-summary');
-    var noteEl = document.getElementById('stats-note');
-
-    tableEl.textContent = '';
-    var table = document.createElement('table');
-    var thead = document.createElement('thead');
-    var headerRow = document.createElement('tr');
-    ['Famille', 'Communes', 'Moy. ratio'].forEach(function(text) {
-      var th = document.createElement('th');
-      th.textContent = text;
-      headerRow.appendChild(th);
-    });
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
-
-    var tbody = document.createElement('tbody');
-    var maxRatio = 0, maxFam = '', minRatio = Infinity, minFam = '';
-    var totalCommunes = 0;
-
-    FAMILLES.forEach(function(f) {
-      if (f.key === 'Non class\u00e9') return;
-      var s = stats[f.key];
-      if (!s) return;
-
-      var avgRatio = s.ratioCount > 0 ? (s.totalRatio / s.ratioCount) : 0;
-      totalCommunes += s.count;
-
-      if (avgRatio > maxRatio && s.ratioCount > 0) { maxRatio = avgRatio; maxFam = f.label; }
-      if (avgRatio < minRatio && s.ratioCount > 0) { minRatio = avgRatio; minFam = f.label; }
-
-      var tr = document.createElement('tr');
-      tr.className = 'clickable';
-      if (activeFilter === f.key) tr.style.fontWeight = '700';
-
-      tr.addEventListener('click', (function(famille) {
-        return function() {
-          activeFilter = famille;
-          updateFilter();
-          if (currentMode === 'surveillance') renderStats();
-        };
-      })(f.key));
-
-      var tdFam = document.createElement('td');
-      var swatch = document.createElement('span');
-      swatch.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:2px;background:' + f.color + ';margin-right:4px;vertical-align:middle;';
-      tdFam.appendChild(swatch);
-      tdFam.appendChild(document.createTextNode(f.label));
-
-      var tdCount = document.createElement('td');
-      tdCount.textContent = s.count;
-
-      var tdRatio = document.createElement('td');
-      tdRatio.textContent = s.ratioCount > 0 ? avgRatio.toFixed(1) : '-';
-
-      tr.appendChild(tdFam);
-      tr.appendChild(tdCount);
-      tr.appendChild(tdRatio);
-      tbody.appendChild(tr);
-    });
-
-    table.appendChild(tbody);
-    tableEl.appendChild(table);
-
-    summaryEl.textContent = '';
-    if (maxRatio > 0 && minRatio < Infinity && maxFam !== minFam) {
-      var diff = Math.round((maxRatio / minRatio - 1) * 100);
-      var strong1 = document.createElement('strong');
-      strong1.textContent = maxFam;
-      var strong2 = document.createElement('strong');
-      strong2.textContent = minFam;
-
-      summaryEl.appendChild(strong1);
-      summaryEl.appendChild(document.createTextNode(
-        ' a le ratio le plus eleve (' + maxRatio.toFixed(1) + '/10k hab), ' +
-        (diff > 0 ? diff + '% de plus que ' : 'similaire a ')
-      ));
-      summaryEl.appendChild(strong2);
-      summaryEl.appendChild(document.createTextNode(' (' + minRatio.toFixed(1) + '/10k hab).'));
-    }
-
-    noteEl.textContent = 'Base sur ' + totalCommunes + ' communes avec donnees surveillance et nuance politique attribuee. ' +
-      'Les communes "Non classe" (92% du total) sont exclues. Sources : police mun. 2024, pop. INSEE 2021. Ratio plafonne a 50/10k hab.';
-
-    if (statsBadge) statsBadge.textContent = totalCommunes;
-  }
-
-  // --- Prospection stats & sliders ---
-  function renderProspStats() {
-    var panel = document.getElementById('stats-panel');
-    var tableEl = document.getElementById('stats-table');
-    var summaryEl = document.getElementById('stats-summary');
-    var noteEl = document.getElementById('stats-note');
-    document.querySelector('#stats-panel h3').textContent = 'Prospection';
-
-    tableEl.textContent = '';
-
-    // Intro explanation
-    var introDiv = document.createElement('div');
-    introDiv.style.cssText = 'font-size:13px;color:#ccc;line-height:1.6;margin-bottom:14px;padding:10px 12px;background:rgba(78,205,196,0.08);border-radius:6px;border-left:3px solid #4ecdc4;';
-    introDiv.textContent = 'Chaque commune recoit un score de 0 a 100 estimant son potentiel ' +
-      'pour la videoverbalisation. Le score combine 6 signaux issus de donnees publiques. ' +
-      'Ajustez les curseurs pour modifier l\'importance de chaque critere — la carte se met a jour en temps reel.';
-    tableEl.appendChild(introDiv);
-
-    // Weight sliders section
-    var slidersDiv = document.createElement('div');
-    slidersDiv.style.cssText = 'margin-bottom:12px;';
-    var slidersTitle = document.createElement('div');
-    slidersTitle.style.cssText = 'font-size:13px;font-weight:700;color:#999;margin-bottom:8px;';
-    slidersTitle.textContent = 'Poids des signaux';
-    slidersDiv.appendChild(slidersTitle);
-
-    PROSP_SIGNALS.forEach(function(sig) {
-      var wrapper = document.createElement('div');
-      wrapper.style.cssText = 'margin:6px 0;';
-
-      var row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:13px;';
-
-      var label = document.createElement('span');
-      label.style.cssText = 'flex:1;min-width:0;';
-      label.textContent = sig.label;
-      var yearSpan = document.createElement('span');
-      yearSpan.className = 'data-year';
-      yearSpan.textContent = '(' + sig.year + ')';
-      label.appendChild(yearSpan);
-
-      var slider = document.createElement('input');
-      slider.type = 'range';
-      slider.min = '0';
-      slider.max = '100';
-      slider.value = String(prospWeights[sig.key]);
-      slider.style.cssText = 'width:70px;';
-
-      var valSpan = document.createElement('span');
-      valSpan.style.cssText = 'min-width:28px;text-align:right;font-weight:600;font-size:12px;';
-      valSpan.textContent = prospWeights[sig.key];
-
-      slider.addEventListener('input', (function(key, vs) {
-        return function() {
-          prospWeights[key] = parseInt(this.value);
-          vs.textContent = this.value;
-          scheduleProspRefresh();
-        };
-      })(sig.key, valSpan));
-
-      row.appendChild(label);
-      row.appendChild(slider);
-      row.appendChild(valSpan);
-      wrapper.appendChild(row);
-
-      // Signal description — short + expandable detail
-      var descEl = document.createElement('div');
-      descEl.style.cssText = 'font-size:11px;color:#777;margin-top:2px;padding-left:2px;line-height:1.4;';
-      descEl.textContent = sig.desc;
-      wrapper.appendChild(descEl);
-
-      if (sig.detail) {
-        var toggle = document.createElement('span');
-        toggle.style.cssText = 'font-size:11px;color:#4ecdc4;cursor:pointer;margin-left:4px;user-select:none;';
-        toggle.textContent = ' [detail]';
-        var detailEl = document.createElement('div');
-        detailEl.style.cssText = 'font-size:11px;color:#aaa;margin-top:4px;padding:6px 8px;background:rgba(255,255,255,0.04);border-radius:4px;line-height:1.5;display:none;';
-        detailEl.textContent = sig.detail;
-        toggle.addEventListener('click', function() {
-          var shown = detailEl.style.display !== 'none';
-          detailEl.style.display = shown ? 'none' : 'block';
-          toggle.textContent = shown ? ' [detail]' : ' [masquer]';
-        });
-        descEl.appendChild(toggle);
-        wrapper.appendChild(detailEl);
-      }
-
-      slidersDiv.appendChild(wrapper);
-    });
-    tableEl.appendChild(slidersDiv);
-
-    // Filters section
-    var filtersDiv = document.createElement('div');
-    filtersDiv.style.cssText = 'margin:12px 0;padding:10px;background:rgba(255,255,255,0.04);border-radius:6px;font-size:13px;';
-    var filtersTitle = document.createElement('div');
-    filtersTitle.style.cssText = 'font-weight:700;color:#999;margin-bottom:8px;font-size:13px;';
-    filtersTitle.textContent = 'Filtres';
-    filtersDiv.appendChild(filtersTitle);
-
-    var filterDefs = [
-      { key: 'statPayantOnly', label: 'Stat. payant uniquement' },
-      { key: 'noVideoverb', label: 'Sans videoverbalisation' }
-    ];
-
-    filterDefs.forEach(function(fd) {
-      var lbl = document.createElement('label');
-      lbl.style.cssText = 'display:flex;align-items:center;gap:4px;cursor:pointer;margin:3px 0;';
-      var cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = prospFilters[fd.key];
-      cb.addEventListener('change', (function(key) {
-        return function() {
-          prospFilters[key] = this.checked;
-          scheduleProspRefresh();
-        };
-      })(fd.key));
-      lbl.appendChild(cb);
-      lbl.appendChild(document.createTextNode(fd.label));
-      filtersDiv.appendChild(lbl);
-    });
-
-    // Population range
-    var popRow = document.createElement('div');
-    popRow.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px;';
-    popRow.appendChild(document.createTextNode('Pop. min :'));
-    var popMinSlider = document.createElement('input');
-    popMinSlider.type = 'range'; popMinSlider.min = '0'; popMinSlider.max = '100000';
-    popMinSlider.value = String(prospFilters.popMin); popMinSlider.step = '1000';
-    popMinSlider.style.cssText = 'width:80px;';
-    var popMinVal = document.createElement('span');
-    popMinVal.style.cssText = 'min-width:44px;font-weight:600;font-size:12px;';
-    popMinVal.textContent = prospFilters.popMin.toLocaleString('fr');
-    popMinSlider.addEventListener('input', function() {
-      prospFilters.popMin = parseInt(this.value);
-      popMinVal.textContent = prospFilters.popMin.toLocaleString('fr');
-      scheduleProspRefresh();
-    });
-    popRow.appendChild(popMinSlider);
-    popRow.appendChild(popMinVal);
-    filtersDiv.appendChild(popRow);
-
-    tableEl.appendChild(filtersDiv);
-
-    // Stats table: per-famille breakdown
-    var statsDiv = document.createElement('div');
-    statsDiv.id = 'prosp-stats-breakdown';
-    tableEl.appendChild(statsDiv);
-
-    updateProspSummary();
-
-    noteEl.textContent = '';
-    var noteTitle = document.createElement('strong');
-    noteTitle.textContent = 'Sources des donnees :';
-    noteEl.appendChild(noteTitle);
-    var sourcesList = [
-      'Police municipale : effectifs par commune 2019-2024, Ministere de l\'Interieur (data.gouv.fr, ODS/XLSX)',
-      'Stationnement payant : enquete reforme stationnement sur voirie, GART/Cerema 2019 (data.gouv.fr, CSV)',
-      'Videoverbalisation : communes equipees, video-verbalisation.fr 2025 (scrapping HTML)',
-      'Accidents routiers : BAAC accidents corporels 2023-2024, ONISR (data.gouv.fr, CSV)',
-      'Population : pop. legale INSEE 2021'
-    ];
-    var ul = document.createElement('ul');
-    ul.style.cssText = 'margin:4px 0 0 16px;padding:0;';
-    sourcesList.forEach(function(src) {
-      var li = document.createElement('li');
-      li.style.cssText = 'margin:2px 0;';
-      li.textContent = src;
-      ul.appendChild(li);
-    });
-    noteEl.appendChild(ul);
-  }
-
-  function updateProspSummary() {
-    var summaryEl = document.getElementById('stats-summary');
-    var statsDiv = document.getElementById('prosp-stats-breakdown');
-    if (!statsDiv) return;
-
-    // Compute per-famille stats
-    var famStats = {};
-    FAMILLES.forEach(function(f) {
-      if (f.key === 'Non class\u00e9') return;
-      famStats[f.key] = { label: f.label, color: f.color, count: 0, totalScore: 0, scored: 0 };
-    });
-
-    var totalScored = 0;
-    var hotProspects = 0;
-
-    for (var code in prosp) {
-      if (!passesProspFilters(code)) continue;
-      var score = computeProspScore(code);
-      var m = maires[code];
-      var fam = m ? famStats[m.f] : null;
-
-      if (score !== null) {
-        totalScored++;
-        if (fam) { fam.count++; fam.totalScore += score; fam.scored++; }
-        var p = prosp[code];
-        if (p.stat_payant && !p.videoverb) hotProspects++;
-      }
-    }
-
-    if (statsBadge) statsBadge.textContent = totalScored;
-
-    // Build table
-    statsDiv.textContent = '';
-    var table = document.createElement('table');
-    var thead = document.createElement('thead');
-    var hr = document.createElement('tr');
-    ['Famille', 'Communes', 'Score moy.'].forEach(function(t) {
-      var th = document.createElement('th'); th.textContent = t; hr.appendChild(th);
-    });
-    thead.appendChild(hr);
-    table.appendChild(thead);
-
-    var tbody = document.createElement('tbody');
-    FAMILLES.forEach(function(f) {
-      if (f.key === 'Non class\u00e9') return;
-      var s = famStats[f.key];
-      if (!s || s.count === 0) return;
-      var tr = document.createElement('tr');
-      var tdF = document.createElement('td');
-      var sw = document.createElement('span');
-      sw.style.cssText = 'display:inline-block;width:10px;height:10px;border-radius:2px;background:' + f.color + ';margin-right:4px;vertical-align:middle;';
-      tdF.appendChild(sw);
-      tdF.appendChild(document.createTextNode(f.label));
-      var tdC = document.createElement('td'); tdC.textContent = s.count;
-      var tdS = document.createElement('td');
-      tdS.textContent = s.scored > 0 ? (s.totalScore / s.scored).toFixed(0) : '-';
-      tr.appendChild(tdF); tr.appendChild(tdC); tr.appendChild(tdS);
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    statsDiv.appendChild(table);
-
-    // Summary
-    summaryEl.textContent = '';
-    var line1 = document.createElement('div');
-    line1.textContent = totalScored + ' communes scorees';
-    summaryEl.appendChild(line1);
-    var line2 = document.createElement('div');
-    var strong = document.createElement('strong');
-    strong.textContent = hotProspects;
-    line2.appendChild(strong);
-    line2.appendChild(document.createTextNode(' avec stat. payant sans videoverbalisation'));
-    summaryEl.appendChild(line2);
-  }
-
-  // Hide loading
-  document.getElementById('loading').style.display = 'none';
-
-  // Cascade reveal panels
-  var cascadePanels = ['title-bar', 'legend', 'filter-bar'];
-  cascadePanels.forEach(function(id, i) {
-    var el = document.getElementById(id);
-    el.classList.add('cascade-in');
-    setTimeout(function() {
-      el.classList.add('visible');
-    }, i * 120);
-  });
+  btnMethodo.addEventListener('click', toggleMethodo);
+  methodoOverlay.addEventListener('click', toggleMethodo);
+  document.querySelector('.methodo-close button').addEventListener('click', toggleMethodo);
 
   // --- Search bar ---
   var searchInput = document.getElementById('search-input');
@@ -1591,7 +712,6 @@ input[type="range"]::-moz-range-thumb {
     var q = normalizeSearch(query);
     var matches = [];
 
-    // Exact start matches first, then contains
     var startMatches = [];
     var containsMatches = [];
     for (var i = 0; i < searchIndex.length && matches.length < 50; i++) {
@@ -1697,6 +817,12 @@ input[type="range"]::-moz-range-thumb {
       searchResults.style.display = 'none';
     }
   });
+
+  // --- Hide loading, apply initial state ---
+  document.getElementById('loading').style.display = 'none';
+
+  // Initial mode indicator position (after layout is visible)
+  setTimeout(updateModeIndicator, 0);
 
 })();
 </script>
