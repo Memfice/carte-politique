@@ -900,6 +900,109 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
       content.appendChild(scoreSec);
     }
 
+    // --- Argumentaire section ---
+    var ins = insights[code];
+    if (ins) {
+      var argSec = document.createElement('div');
+      argSec.className = 'detail-section';
+
+      var argTitle = document.createElement('div');
+      argTitle.className = 'cmd-section-title';
+      argTitle.textContent = 'ARGUMENTAIRE';
+      argSec.appendChild(argTitle);
+
+      var narrative = buildNarrative(code);
+      if (narrative) {
+        var narDiv = document.createElement('div');
+        narDiv.className = 'argumentaire-narrative';
+        narDiv.appendChild(narrative);
+        argSec.appendChild(narDiv);
+      }
+
+      var bench = ins.bench;
+      if (bench && Object.keys(bench).length > 0) {
+        var table = document.createElement('table');
+        table.className = 'bench-table';
+
+        var thead = document.createElement('thead');
+        var headRow = document.createElement('tr');
+        ['Indicateur', 'Commune', 'Pairs (med.)', 'Rang'].forEach(function(h) {
+          var th = document.createElement('th');
+          th.textContent = h;
+          headRow.appendChild(th);
+        });
+        thead.appendChild(headRow);
+        table.appendChild(thead);
+
+        var tbody = document.createElement('tbody');
+        var benchLabels = {
+          crime_r: 'Criminalite /10k',
+          pm_r: 'Police mun. /10k',
+          accidents_r: 'Accidents /10k',
+          rev_med: 'Revenu median',
+          tx_pauv: 'Taux pauvrete'
+        };
+        var benchOrder = ['crime_r', 'pm_r', 'accidents_r', 'rev_med', 'tx_pauv'];
+        benchOrder.forEach(function(key) {
+          if (!bench[key]) return;
+          var bv = bench[key];
+          var tr = document.createElement('tr');
+
+          var tdLabel = document.createElement('td');
+          tdLabel.textContent = benchLabels[key] || key;
+          tr.appendChild(tdLabel);
+
+          var tdVal = document.createElement('td');
+          tdVal.className = 'bench-val';
+          tdVal.textContent = (key === 'rev_med') ? bv.val.toLocaleString('fr') + ' \u20ac' :
+                              (key === 'tx_pauv') ? bv.val + ' %' : bv.val;
+          tr.appendChild(tdVal);
+
+          var tdMed = document.createElement('td');
+          tdMed.textContent = (key === 'rev_med') ? bv.med.toLocaleString('fr') + ' \u20ac' :
+                              (key === 'tx_pauv') ? bv.med + ' %' : bv.med;
+          tr.appendChild(tdMed);
+
+          var tdPct = document.createElement('td');
+          tdPct.className = 'bench-pct';
+          tdPct.textContent = bv.pct + 'e pct';
+          if (key === 'rev_med') {
+            tdPct.className += bv.pct > 60 ? ' bench-pct-low' : (bv.pct > 30 ? ' bench-pct-mid' : ' bench-pct-high');
+          } else {
+            tdPct.className += bv.pct > 75 ? ' bench-pct-high' : (bv.pct > 50 ? ' bench-pct-mid' : ' bench-pct-low');
+          }
+          tr.appendChild(tdPct);
+
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        argSec.appendChild(table);
+      }
+
+      if (ins.peers && ins.peer_names) {
+        var peerDiv = document.createElement('div');
+        peerDiv.className = 'peer-links';
+        peerDiv.appendChild(document.createTextNode('Communes comparables : '));
+        ins.peers.forEach(function(pc, i) {
+          if (i > 0) peerDiv.appendChild(document.createTextNode(', '));
+          var link = document.createElement('span');
+          link.className = 'peer-link';
+          link.textContent = ins.peer_names[i] || pc;
+          link.addEventListener('click', function() {
+            var layer = layerByCode[pc];
+            if (layer) {
+              map.fitBounds(layer.getBounds());
+              openDetail(pc);
+            }
+          });
+          peerDiv.appendChild(link);
+        });
+        argSec.appendChild(peerDiv);
+      }
+
+      content.appendChild(argSec);
+    }
+
     // Surveillance section
     if (s || p) {
       var survSec = document.createElement('div');
