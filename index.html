@@ -712,6 +712,56 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; border-radius
     infoPanel.style.display = 'block';
   }
 
+  // --- Argumentaire narrative builder ---
+  function buildNarrative(code) {
+    var ins = insights[code];
+    if (!ins || !ins.flags) return null;
+    var f = ins.flags;
+    var b = ins.bench || {};
+    var m = maires[code];
+    var p = prosp[code];
+    var pop = p ? p.pop : (surv[code] ? surv[code].pop : 0);
+    var name = m ? m.n : code;
+
+    var phrases = [];
+    if (f.crime_above_peers && b.crime_r) {
+      phrases.push('La delinquance enregistree est superieure a ' + b.crime_r.pct + '% des communes comparables (' + b.crime_r.val + ' vs ' + b.crime_r.med + ' /10k).');
+    }
+    if (f.no_pm_peers_have) {
+      phrases.push(f.peers_pm_pct + '% des communes similaires disposent d\'une police municipale, mais pas ' + name + '.');
+    }
+    if (f.no_vv_peers_have) {
+      phrases.push(f.peers_vv_pct + '% des communes comparables sont deja equipees en videoverbalisation.');
+    }
+    if (f.pm_growing) {
+      phrases.push('Les effectifs de police municipale sont en croissance, signe d\'une dynamique d\'investissement en securite.');
+    }
+    if (f.high_accident_rate && b.accidents_r) {
+      phrases.push('Le taux d\'accidents corporels (' + b.accidents_r.val.toFixed(1) + ' /10k) est au-dessus de la mediane des pairs (' + b.accidents_r.med.toFixed(1) + ').');
+    }
+    if (f.budget_capacity) {
+      var dgf = (enrich[code] || {}).dgf_hab;
+      if (dgf !== undefined) {
+        phrases.push('La capacite budgetaire (DGF ' + dgf.toFixed(0) + ' \u20ac/hab) permet d\'envisager un investissement.');
+      }
+    }
+    if (f.high_poverty && b.tx_pauv) {
+      phrases.push('Attention : taux de pauvrete eleve (' + b.tx_pauv.val + '%), a prendre en compte dans l\'approche commerciale.');
+    }
+
+    if (phrases.length === 0) return null;
+
+    var frag = document.createDocumentFragment();
+    var opener = document.createElement('strong');
+    opener.textContent = name + ' (' + (pop ? pop.toLocaleString('fr') : '?') + ' hab.) \u2014 ';
+    frag.appendChild(opener);
+    phrases.forEach(function(text, i) {
+      if (i > 0) frag.appendChild(document.createTextNode(' '));
+      frag.appendChild(document.createTextNode(text));
+    });
+    return frag;
+  }
+
   // --- Detail panel ---
   function openDetail(code) {
     var panel = document.getElementById('detail-panel');
