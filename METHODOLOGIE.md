@@ -548,6 +548,31 @@ Les sources plus recentes (delinquance, QPV, DGFiP) utilisent directement le cod
 7. **Taux de pauvrete partiel** : le taux de pauvrete (Filosofi 2021) n'est disponible que pour ~4 350 communes de taille suffisante en raison du secret statistique
 8. **Paris/Lyon/Marseille** : certaines donnees financieres peuvent etre absentes car ces communes utilisent des codes d'arrondissements incompatibles avec le code commune global
 
+### Peer groups et argumentaire (insights.json)
+
+Le script `process_insights.py` calcule pour chaque commune un **groupe de pairs** (20 communes les plus similaires) et des **benchmarks comparatifs**.
+
+**Algorithme de distance** : distance euclidienne ponderee sur 4 dimensions normalisees (z-score) :
+- `log(population)` — poids 0.4
+- `revenu median` — poids 0.25
+- `taux de pauvrete` — poids 0.25
+- `famille politique` — bonus de proximite -0.3 si meme famille
+
+**Benchmarks** : pour chaque commune, on calcule le percentile parmi ses 20 pairs sur 5 indicateurs (criminalite, police municipale, accidents, revenu, pauvrete).
+
+**Flags narratifs** (seuils) :
+- `crime_above_peers` : percentile criminalite > 75
+- `no_pm_peers_have` : commune sans PM et > 50% des pairs en ont
+- `no_vv_peers_have` : commune sans VV et > 30% des pairs en ont
+- `pm_growing` : effectifs PM en hausse (dernier > premier dans la tendance)
+- `high_accident_rate` : percentile accidents > 50
+- `budget_capacity` : DGF/hab au-dessus de la mediane des pairs
+- `high_poverty` : percentile pauvrete > 60
+
+**Couverture** : ~9 500 communes (celles ayant une population connue et au moins un indicateur socio-economique).
+
+**Biais** : le peer matching favorise les communes bien documentees (avec revenus et pauvrete disponibles). Les petites communes rurales sans donnees Filosofi sont exclues.
+
 ### Fraicheur des donnees (au 1er mars 2026)
 
 | Donnee | Annee | Age | Badge |
@@ -589,6 +614,9 @@ python3 process_delinquance.py
 
 # Regenerer les donnees d'enrichissement (QPV, DGFiP, Filosofi — telecharge tout)
 python3 process_enrichment.py
+
+# Regenerer les insights (peer groups, benchmarks — utilise les JSON existants, ~2 min)
+python3 process_insights.py
 ```
 
 Dependances Python : `pandas`, `openpyxl`, `odf`, `pyarrow`
